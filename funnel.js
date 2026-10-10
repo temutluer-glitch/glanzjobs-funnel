@@ -1,6 +1,7 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
-   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 4 (Mehrfachauswahl als Textfeld, Zaehler ohne Kontaktschritt). */
+   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 5: jede dataLayer-Meldung traegt eine event_id (Deduplizierung Browser/Server),
+   neue Meldungen gj_contact_view, gj_lead, gj_submit_application mit user_data; Pixel-Aufrufe laufen nur noch ueber den Tag Manager. */
 (function () {
   "use strict";
   var cfgEl = document.getElementById("gj-config");
@@ -84,11 +85,13 @@
   var counterEl = document.querySelector('[data-gj="counter"]'), bar = document.querySelector('[data-gj="bar"]'), fill = document.querySelector('[data-gj="bar-fill"]');
   document.querySelectorAll("[data-text]").forEach(function (el) { el.removeAttribute("data-text"); });
   var allSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
+  var contactSeen = false;
   function paint() {
     var idx = -1;
     allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
     var total = allSteps.length - 2;                 /* ohne Intro und ohne Kontaktschritt */
     var onIntro = idx <= 0, onContact = idx >= allSteps.length - 1;
+    if (onContact && !contactSeen && allSteps.length > 1) { contactSeen = true; dl({ event: "gj_contact_view" }); }
     if (counterEl) { counterEl.style.visibility = onIntro ? "hidden" : "visible"; counterEl.textContent = onIntro ? "" : (onContact ? "Letzter Schritt" : ("Frage " + idx + " von " + total)); }
     if (bar) bar.style.visibility = onIntro ? "hidden" : "visible";
     if (fill) fill.style.width = (onContact ? 100 : Math.max(4, Math.round((Math.max(0, idx) / Math.max(1, total + 1)) * 100))) + "%";
@@ -129,8 +132,24 @@
   function writeAll() { Object.keys(V).forEach(function (key) { setField(key, V[key]); }); }
   writeAll(); var end = Date.now() + 5000; var iv = setInterval(function () { writeAll(); if (Date.now() > end) clearInterval(iv); }, 300);
   document.addEventListener("submit", function () { setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll(); }, true);
-  window.dataLayer = window.dataLayer || [];
-  window.dataLayer.push(Object.assign({ event: "gj_attribution_ready" }, V));
+  function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid(); window.__gjLastEventId = obj.event_id; window.dataLayer.push(obj); return obj.event_id; }
+  dl(Object.assign({ event: "gj_attribution_ready" }, V));
+
+  /* ---------- Lead-Events bei sichtbarer Erfolgsmeldung (Lead + SubmitApplication, mit user_data fuer den Abgleich) ---------- */
+  function val(id) { var el = document.getElementById(id); return el && el.value ? String(el.value).trim() : ""; }
+  function normPhone(p) { var d = p.replace(/\D/g, ""); if (d.indexOf("00") === 0) d = d.slice(2); else if (d.indexOf("0") === 0) d = "49" + d.slice(1); return d; }
+  var okEl = document.getElementById("bewerbung-erfolgreich"), leadSent = false;
+  function checkLead() {
+    if (leadSent || !okEl || getComputedStyle(okEl).display === "none") return; leadSent = true;
+    var plzOrt = val("f-plz-ort"), zip = (plzOrt.match(/\b\d{5}\b/) || [""])[0], city = plzOrt.replace(/\b\d{5}\b/, "").replace(/[,\s]+/g, " ").trim();
+    var ud = { em: val("f-email").toLowerCase(), ph: normPhone(val("f-telefon")), fn: val("f-vorname"), ln: val("f-nachname"), zp: zip, ct: city, country: "de",
+               external_id: eid, fbc: fbc || "", fbp: fbp };
+    Object.keys(ud).forEach(function (key) { if (!ud[key]) delete ud[key]; });
+    var tof = Math.round((Date.now() - Number(start)) / 1000);
+    dl({ event: "gj_lead", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof });
+    dl({ event: "gj_submit_application", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof });
+  }
+  if (okEl) { new MutationObserver(checkLead).observe(okEl, { attributes: true, attributeFilter: ["style", "class"] }); setTimeout(checkLead, 0); }
 
   /* ---------- Quiz-Events ---------- */
   var seenAnswer = false;
@@ -138,24 +157,23 @@
     var el = e.target; if (!el || !el.matches('input[type="radio"], input[type="checkbox"]')) return;
     if (el.type === "radio" && !el.checked) return;
     var step = el.closest('[data-gj="step"]'); if (!step) return;
-    window.dataLayer.push({ event: "quiz_answer", quiz_step: step.getAttribute("data-question-id"), answer: el.value, first_answer: !seenAnswer });
+    dl({ event: "quiz_answer", quiz_step: step.getAttribute("data-question-id"), answer: el.value, first_answer: !seenAnswer });
     seenAnswer = true;
   }, true);
   document.addEventListener("click", function (e) {
     var a = e.target && e.target.closest && e.target.closest('a[href*="/absage"]'); if (!a) return;
     var step = a.closest('[data-gj="step"]');
-    window.dataLayer.push({ event: "quiz_ko", quiz_step: step ? step.getAttribute("data-question-id") : "", answer: (a.textContent || "").trim() });
+    dl({ event: "quiz_ko", quiz_step: step ? step.getAttribute("data-question-id") : "", answer: (a.textContent || "").trim() });
   }, true);
   var contactDone = false;
   document.addEventListener("focusin", function (e) {
     if (contactDone) return; var t = e.target;
-    if (t && t.closest && t.closest("#contact") && t.matches("input, textarea")) { contactDone = true; window.dataLayer.push({ event: "contact_start" }); }
+    if (t && t.closest && t.closest("#contact") && t.matches("input, textarea")) { contactDone = true; dl({ event: "contact_start" }); }
   }, true);
 
   /* ---------- Zeit-Events (aktiv sichtbare Zeit) ---------- */
-  var TH = [[10, "low_interest"], [25, "mid_interest"], [60, "high_interest"], [90, "super_high_interest"]], queue = [], fired = {}, active = 0, last = null, raf = null;
-  function fire(name) { if (typeof window.fbq === "function") { try { window.fbq("trackCustom", name); } catch (e) {} } else queue.push(name); window.dataLayer.push({ event: "gj_time_" + name }); }
-  setInterval(function () { if (typeof window.fbq === "function") while (queue.length) fire(queue.shift()); }, 500);
+  var TH = [[10, "low_interest"], [25, "mid_interest"], [60, "high_interest"], [90, "super_high_interest"]], fired = {}, active = 0, last = null, raf = null;
+  function fire(name) { dl({ event: "gj_time_" + name, interest: name }); }
   function tick() { if (document.visibilityState !== "visible") return; var now = performance.now(); if (last != null) active += (now - last) / 1000; last = now;
     TH.forEach(function (t) { if (active >= t[0] && !fired[t[1]]) { fired[t[1]] = true; fire(t[1]); } }); raf = requestAnimationFrame(tick); }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { last = performance.now(); tick(); } else { cancelAnimationFrame(raf); last = null; } });
