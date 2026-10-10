@@ -1,6 +1,6 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
-   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version: siehe Git-Commit. */
+   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 2 (Zaehler eigenstaendig, Formly-Zaehler abgeschaltet). */
 (function () {
   "use strict";
   var cfgEl = document.getElementById("gj-config");
@@ -17,6 +17,7 @@
   var css = document.createElement("style");
   css.textContent =
     ".fn-btn-primary,.fn-bar-fill{background-color:var(--gj)!important;border-color:var(--gj)!important}" +
+    ".fn-list{white-space:pre-line}[data-gj=counter]{font-weight:600}" +
     ".fn-btn.w-radio,.fn-btn.w-checkbox{cursor:pointer;margin-bottom:0}" +
     ".fn-btn:has(input:checked){border-color:var(--gj)!important;background:color-mix(in srgb,var(--gj) 10%,#fff)!important}" +
     ".fn-btn .w-form-label{cursor:pointer;font-weight:600;margin-left:0}" +
@@ -72,20 +73,22 @@
     }
   });
 
-  /* ---------- Zaehler und Fortschrittsbalken (Formly schreibt data-text current-step/total-steps) ---------- */
-  var counter = document.querySelector('[data-gj="counter"]'), bar = document.querySelector('[data-gj="bar"]'), fill = document.querySelector('[data-gj="bar-fill"]');
-  var cur = document.querySelector('[data-gj="cur"]'), tot = document.querySelector('[data-gj="tot"]');
+  /* ---------- Zaehler und Fortschrittsbalken (eigene Logik, Formly-Zaehler deaktiviert) ---------- */
+  var counterEl = document.querySelector('[data-gj="counter"]'), bar = document.querySelector('[data-gj="bar"]'), fill = document.querySelector('[data-gj="bar-fill"]');
+  document.querySelectorAll("[data-text]").forEach(function (el) { el.removeAttribute("data-text"); });
+  var allSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
   function paint() {
-    var c = parseInt(cur && cur.textContent, 10) || 1, t = parseInt(tot && tot.textContent, 10) || 1;
-    var onIntro = c <= 1;
-    if (counter) counter.style.visibility = onIntro ? "hidden" : "visible";
+    var idx = -1;
+    allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
+    var total = allSteps.length - 1;                 /* ohne Intro */
+    var onIntro = idx <= 0;
+    if (counterEl) { counterEl.style.visibility = onIntro ? "hidden" : "visible"; counterEl.textContent = onIntro ? "" : ("Frage " + idx + " von " + total); }
     if (bar) bar.style.visibility = onIntro ? "hidden" : "visible";
-    if (fill) fill.style.width = Math.max(4, Math.round(((c - 1) / Math.max(1, t - 1)) * 100)) + "%";
-    if (cur && !onIntro) cur.textContent = String(c - 1);          /* Intro nicht mitzaehlen */
-    if (tot) tot.textContent = String(Math.max(1, t - 1));
+    if (fill) fill.style.width = Math.max(4, Math.round((Math.max(0, idx) / Math.max(1, total)) * 100)) + "%";
   }
-  if (cur) new MutationObserver(paint).observe(cur, { childList: true, characterData: true, subtree: true });
-  window.addEventListener("load", paint);
+  var mo = new MutationObserver(paint);
+  allSteps.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ["style", "class"] }); });
+  window.addEventListener("load", paint); paint();
 
   /* ---------- Attribution: fbc/fbp, UTM, Anzeigen-Namen, Nutzer-ID, Stellen-Zuordnung ---------- */
   var DAYS = 90;
