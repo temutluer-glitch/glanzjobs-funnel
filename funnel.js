@@ -1,6 +1,6 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
-   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 2 (Zaehler eigenstaendig, Formly-Zaehler abgeschaltet). */
+   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 3 (Mehrfachauswahl als verbundenes Textfeld, Zaehler eigenstaendig). */
 (function () {
   "use strict";
   var cfgEl = document.getElementById("gj-config");
@@ -62,8 +62,15 @@
       input.name = qid; input.value = text; input.id = qid + "_" + n;
       input.setAttribute("data-name", qid);
       if (label) label.setAttribute("for", input.id);
-      if (multi) { input.type = "checkbox"; input.removeAttribute("data-form"); w.classList.remove("w-radio"); w.classList.add("w-checkbox"); input.classList.remove("w-radio-input"); input.classList.add("w-checkbox-input"); }
+      if (multi) { input.type = "checkbox"; input.removeAttribute("data-form"); input.removeAttribute("name"); input.removeAttribute("data-name"); input.setAttribute("data-gj-multi", qid); w.classList.remove("w-radio"); w.classList.add("w-checkbox"); input.classList.remove("w-radio-input"); input.classList.add("w-checkbox-input"); }
     });
+    if (multi) {
+      /* Webflow sendet Kaestchen nur als true/false. Deshalb: Kaestchen ohne Namen, gewaehlte Texte in ein verstecktes Feld <qid> schreiben. */
+      var joined = document.createElement("input"); joined.type = "hidden"; joined.name = qid; joined.setAttribute("data-name", qid); joined.value = ""; step.appendChild(joined);
+      step.addEventListener("change", function () {
+        joined.value = Array.prototype.map.call(step.querySelectorAll('input[data-gj-multi="' + qid + '"]:checked'), function (i) { return i.value; }).join("; ");
+      });
+    }
     var ko = step.querySelector('[data-gj="ko"]');
     if (ko) { var kt = ko.querySelector('[data-gj="ko-text"]'); if (!kt || !kt.textContent.trim()) ko.remove(); else ko.setAttribute("data-answer-id", "ko"); }
     if (multi && answers) {
