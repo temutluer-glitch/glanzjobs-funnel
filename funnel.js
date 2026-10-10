@@ -1,6 +1,6 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
-   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 3 (Mehrfachauswahl als verbundenes Textfeld, Zaehler eigenstaendig). */
+   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 4 (Mehrfachauswahl als Textfeld, Zaehler ohne Kontaktschritt). */
 (function () {
   "use strict";
   var cfgEl = document.getElementById("gj-config");
@@ -87,11 +87,11 @@
   function paint() {
     var idx = -1;
     allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
-    var total = allSteps.length - 1;                 /* ohne Intro */
-    var onIntro = idx <= 0;
-    if (counterEl) { counterEl.style.visibility = onIntro ? "hidden" : "visible"; counterEl.textContent = onIntro ? "" : ("Frage " + idx + " von " + total); }
+    var total = allSteps.length - 2;                 /* ohne Intro und ohne Kontaktschritt */
+    var onIntro = idx <= 0, onContact = idx >= allSteps.length - 1;
+    if (counterEl) { counterEl.style.visibility = onIntro ? "hidden" : "visible"; counterEl.textContent = onIntro ? "" : (onContact ? "Letzter Schritt" : ("Frage " + idx + " von " + total)); }
     if (bar) bar.style.visibility = onIntro ? "hidden" : "visible";
-    if (fill) fill.style.width = Math.max(4, Math.round((Math.max(0, idx) / Math.max(1, total)) * 100)) + "%";
+    if (fill) fill.style.width = (onContact ? 100 : Math.max(4, Math.round((Math.max(0, idx) / Math.max(1, total + 1)) * 100))) + "%";
   }
   var mo = new MutationObserver(paint);
   allSteps.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ["style", "class"] }); });
