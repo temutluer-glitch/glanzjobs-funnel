@@ -46,6 +46,7 @@ section[data-gj=page]{display:block;min-height:100vh;padding:0 0 28px}
 [data-gj=page] [data-gj=contact-hint],[data-gj=page] [data-gj=contact2-hint]{color:var(--gj-fg);font-weight:600}
 [data-gj=page] [data-gj=meta]{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 14px;margin:0 0 20px;font-size:15px;font-weight:600}
 [data-gj=page] [data-gj=meta] span+span::before{content:"|";color:var(--gj-line);margin-right:14px;font-weight:400}
+@media (max-width:639px){[data-gj=page] [data-gj=meta]{gap:4px 12px;font-size:14px}[data-gj=page] [data-gj=meta] span+span::before{display:none}}
 
 /* Antworten: volle Breite in Kundenfarbe mit Pfeil */
 [data-gj=page] .fn-answers{display:grid;gap:10px;margin:0 0 6px}
