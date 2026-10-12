@@ -1,6 +1,7 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 7 (Struktur nach Perspective-Vorlage): Platzhalter [Stelle]/[Beruf]/[Ort] in Fragen und Antworten, Freitext-Fragen (CMS-Feld Freitext-Platzhalter) als Textfeld mit Weiter-Knopf, fester Schritt 'Woher kommst Du?' (plz_ort), Kurzzeile unter Frage 1 mit Ort, Zeitmodell und Start.
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
    Telefonnummer wird beim Absenden auf +49-Format gebracht (Haken am Klick/Enter, weil Formly per jQuery absendet); Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
@@ -12,12 +13,16 @@
   function img(name) { var i = cfgEl && cfgEl.querySelector('[data-ff="' + name + '"]'); var s = i && i.getAttribute("src"); return s && !/placeholder/i.test(s) ? s : ""; }
   var C = { firma: k("firma"), slug: k("slug") || location.pathname.split("/").pop(), stelle: k("stelle"), ort: k("ort"),
             farbe: k("farbe"), ap: k("ap"), ziel: k("webhook"), pixel: k("pixel").replace(/\D/g, ""), ds: k("ds"), imp: k("imp"),
-            benefits: k("benefits"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
+            benefits: k("benefits"), zeitmodell: k("zeitmodell"), start: k("start"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
   window.__gjConfig = C;
   var page = document.querySelector('[data-gj="page"]');
   function q(sel, root) { return (root || document).querySelector(sel); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function safeUrl(u) { return /^https?:\/\//i.test(u) ? u : ""; }
+  /* Platzhalter in Fragen und Antworten: [Stelle] = Stellenbezeichnung, [Beruf] = ohne (m/w/d), [Ort] = Einsatzort. */
+  var beruf = C.stelle.replace(/\s*\((m\/w\/d|w\/m\/d|m\/w\/x|d\/m\/w|m\/f\/d)\)/i, "").trim();
+  function fill(t) { return String(t || "").replace(/\[Stelle\]/g, C.stelle).replace(/\[Beruf\]/g, beruf).replace(/\[Ort\]/g, C.ort); }
+  function fillEl(el) { if (el && el.textContent && /\[(Stelle|Beruf|Ort)\]/.test(el.textContent)) el.textContent = fill(el.textContent); }
 
   /* ---------- Kundenfarbe (alles Weitere steht in funnel.css) ---------- */
   var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#335e7b";
@@ -48,6 +53,7 @@
   setAttrs(fName, { id: "f-name", name: "name", "data-name": "name", placeholder: "Vor- und Nachname", autocomplete: "name", required: "required", minlength: "3" });
   setAttrs(document.getElementById("f-telefon"), { placeholder: "Telefonnummer", autocomplete: "tel-national", inputmode: "tel" });
   setAttrs(document.getElementById("f-email"), { placeholder: "E-Mail", autocomplete: "email", inputmode: "email" });
+  setAttrs(document.getElementById("f-plz-ort"), { placeholder: "Dein Stadtteil/Ort", autocomplete: "address-level2" });
   [fVor, fNach].forEach(function (el) { if (el) { el.removeAttribute("required"); el.setAttribute("tabindex", "-1"); el.setAttribute("aria-hidden", "true"); } });
   function splitName() {
     if (!fName) return;
@@ -68,19 +74,33 @@
 
   /* ---------- Fragen-Schritte aus der Collection-Liste vorbereiten (vor Formly) ---------- */
   var steps = document.querySelectorAll('[data-gj="steps"] [data-gj="step"]');
-  var usedIds = {};
+  var usedIds = {}, seenAnswer = false;
   steps.forEach(function (step, si) {
     var qidEl = step.querySelector('[data-gj="qid"]'), typEl = step.querySelector('[data-gj="typ"]');
     var qid = (qidEl && qidEl.textContent.trim().replace(/[^a-z0-9_-]/gi, "_").toLowerCase()) || ("frage_" + (si + 1));
     if (usedIds[qid]) qid = qid + "_" + (si + 1); usedIds[qid] = true;
     var multi = /mehrfach/i.test(typEl ? typEl.textContent : "");
     step.setAttribute("data-question-id", qid);
-    var hint = step.querySelector('[data-gj="hint"]'); if (hint && !hint.textContent.trim()) hint.remove();
+    var qEl = step.querySelector('[data-gj="q"]'); fillEl(qEl);
+    var hint = step.querySelector('[data-gj="hint"]'); fillEl(hint); if (hint && !hint.textContent.trim()) { hint.remove(); hint = null; }
     var answers = step.querySelector('[data-gj="answers"]');
+    var phEl = step.querySelector('[data-gj="platzhalter"]'), placeholder = phEl ? fill(phEl.textContent.trim()) : "";
+    if (placeholder) {
+      /* Freitext-Frage: Antworten und KO-Knopf weg, Textfeld plus Weiter-Knopf rein. */
+      if (answers) { answers.remove(); answers = null; }
+      var koOld = step.querySelector('[data-gj="ko"]'); if (koOld) koOld.remove();
+      var wrap = document.createElement("div"); wrap.className = "fn-field gj-textarea-wrap";
+      var ta = document.createElement("textarea"); ta.className = "fn-input gj-textarea"; ta.name = qid; ta.setAttribute("data-name", qid); ta.id = qid + "_text";
+      ta.required = true; ta.rows = 4; ta.placeholder = placeholder; ta.setAttribute("minlength", "10"); wrap.appendChild(ta); step.appendChild(wrap);
+      var go = document.createElement("a"); go.href = "#"; go.className = "fn-btn fn-btn-primary"; go.setAttribute("data-form", "next-btn"); go.setAttribute("data-gj", "next"); go.textContent = "Weiter"; step.appendChild(go);
+      ta.addEventListener("input", function once() { ta.removeEventListener("input", once); dl({ event: "quiz_answer", quiz_step: qid, answer: "(Freitext)", first_answer: !seenAnswer }); seenAnswer = true; });
+      multi = false;
+    }
     var wrappers = step.querySelectorAll('[data-gj^="a"].w-radio, [data-gj^="a"].w-checkbox');
     var n = 0;
     wrappers.forEach(function (w) {
       var input = w.querySelector("input"), label = w.querySelector(".w-form-label");
+      fillEl(label);
       var text = label ? label.textContent.trim() : "";
       if (!text) { w.remove(); return; }
       n++;
@@ -97,17 +117,17 @@
       });
     }
     var ko = step.querySelector('[data-gj="ko"]');
-    if (ko) { var kt = ko.querySelector('[data-gj="ko-text"]'); if (!kt || !kt.textContent.trim()) ko.remove(); else ko.setAttribute("data-answer-id", "ko"); }
+    if (ko) { var kt = ko.querySelector('[data-gj="ko-text"]'); fillEl(kt); if (!kt || !kt.textContent.trim()) ko.remove(); else ko.setAttribute("data-answer-id", "ko"); }
     if (multi && answers) {
       answers.removeAttribute("data-radio-skip");
       var next = document.createElement("a"); next.href = "#"; next.className = "fn-btn fn-btn-primary"; next.setAttribute("data-form", "next-btn"); next.setAttribute("data-gj", "next");
       next.textContent = "Weiter"; answers.after(next);
     }
     if (si === 0) {
-      /* Erste Frage: Ort und bis zu zwei Benefits als Kurzzeile unter der Frage. */
-      var qEl = step.querySelector('[data-gj="q"]'), items = [];
-      if (C.ort) items.push("📍 " + C.ort);
-      C.benefits.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 2).forEach(function (b) { items.push(b); });
+      /* Erste Frage: Kurzzeile nach Perspective-Muster, Ort, Zeitmodell und Startzeitpunkt. */
+      var items = [];
+      if (C.ort) items.push("\uD83D\uDCCD " + C.ort);
+      if (C.zeitmodell || C.start) items.push("\uD83D\uDD56 " + [C.zeitmodell, C.start].filter(Boolean).join(" \u2192 "));
       if (qEl && items.length) { var meta = document.createElement("div"); meta.setAttribute("data-gj", "meta"); meta.innerHTML = items.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join(""); (hint && hint.parentNode ? hint : qEl).after(meta); }
     }
   });
@@ -194,7 +214,6 @@
   if (okEl) { new MutationObserver(checkLead).observe(okEl, { attributes: true, attributeFilter: ["style", "class"] }); setTimeout(checkLead, 0); }
 
   /* ---------- Quiz-Events ---------- */
-  var seenAnswer = false;
   document.addEventListener("change", function (e) {
     var el = e.target; if (!el || !el.matches('input[type="radio"], input[type="checkbox"]')) return;
     if (el.type === "radio" && !el.checked) return;

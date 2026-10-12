@@ -88,6 +88,9 @@ section[data-gj=page]{display:block;min-height:100vh;padding:0 0 44px}
 [data-gj=page] .fn-field .fn-input::placeholder{color:var(--gj-faint);opacity:1}
 [data-gj=page] .fn-field::after{content:"";position:absolute;right:12px;top:50%;width:24px;height:24px;margin-top:-12px;border-radius:50%;background:#e2b32a var(--gj-check) center/14px no-repeat;opacity:.35;pointer-events:none;transition:opacity .15s ease}
 [data-gj=page] .fn-field:has(.fn-input:valid:not(:placeholder-shown))::after{opacity:1}
+[data-gj=page] .fn-field.gj-textarea-wrap{align-items:stretch}
+[data-gj=page] .fn-field.gj-textarea-wrap::after{top:16px;margin-top:0}
+[data-gj=page] .fn-field .gj-textarea{min-height:130px;resize:vertical;line-height:1.45;font-family:inherit}
 [data-gj=page] [data-gj=f-telefon-wrap]::before{content:"\1F1E9\1F1EA +49";padding-left:14px;font-weight:600;white-space:nowrap;color:var(--gj-fg)}
 [data-gj=page] [data-gj=f-telefon-wrap] .fn-input{padding-left:8px}
 [data-gj=page] [data-gj=f-vorname-wrap],[data-gj=page] [data-gj=f-nachname-wrap]{display:none}
