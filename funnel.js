@@ -104,13 +104,11 @@
       next.textContent = "Weiter"; answers.after(next);
     }
     if (si === 0) {
-      /* Erste Frage: Ort und bis zu zwei Benefits als Kurzzeile unter der Frage, Vertrauenszeile unter den Antworten. */
+      /* Erste Frage: Ort und bis zu zwei Benefits als Kurzzeile unter der Frage. */
       var qEl = step.querySelector('[data-gj="q"]'), items = [];
       if (C.ort) items.push("📍 " + C.ort);
       C.benefits.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 2).forEach(function (b) { items.push(b); });
       if (qEl && items.length) { var meta = document.createElement("div"); meta.setAttribute("data-gj", "meta"); meta.innerHTML = items.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join(""); (hint && hint.parentNode ? hint : qEl).after(meta); }
-      var trust = document.createElement("p"); trust.className = "fn-note"; trust.setAttribute("data-gj", "trust");
-      trust.textContent = "Kein Lebenslauf nötig · 100 % unverbindlich · Antwort innerhalb von 48 Stunden"; step.appendChild(trust);
     }
   });
 
