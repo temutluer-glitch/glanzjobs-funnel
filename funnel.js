@@ -1,7 +1,10 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
-   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_. Version 5: jede dataLayer-Meldung traegt eine event_id (Deduplizierung Browser/Server),
-   neue Meldungen gj_contact_view, gj_lead, gj_submit_application mit user_data; Pixel-Aufrufe laufen nur noch ueber den Tag Manager. */
+   Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
+   (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
+   Telefonnummer wird beim Absenden auf +49-Format gebracht; Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
+   Version 5: event_id auf jeder dataLayer-Meldung, gj_contact_view/gj_lead/gj_submit_application mit user_data, Pixel nur via Tag Manager. */
 (function () {
   "use strict";
   var cfgEl = document.getElementById("gj-config");
@@ -9,38 +12,52 @@
   function img(name) { var i = cfgEl && cfgEl.querySelector('[data-ff="' + name + '"]'); var s = i && i.getAttribute("src"); return s && !/placeholder/i.test(s) ? s : ""; }
   var C = { firma: k("firma"), slug: k("slug") || location.pathname.split("/").pop(), stelle: k("stelle"), ort: k("ort"),
             farbe: k("farbe"), ap: k("ap"), ziel: k("webhook"), pixel: k("pixel").replace(/\D/g, ""), ds: k("ds"), imp: k("imp"),
-            logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
+            benefits: k("benefits"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
   window.__gjConfig = C;
+  var page = document.querySelector('[data-gj="page"]');
+  function q(sel, root) { return (root || document).querySelector(sel); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function safeUrl(u) { return /^https?:\/\//i.test(u) ? u : ""; }
 
-  /* ---------- Farbe und Zustands-Styles ---------- */
-  var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#0b5fff";
+  /* ---------- Kundenfarbe (alles Weitere steht in funnel.css) ---------- */
+  var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#335e7b";
   document.documentElement.style.setProperty("--gj", color);
-  var css = document.createElement("style");
-  css.textContent =
-    ".fn-btn-primary,.fn-bar-fill{background-color:var(--gj)!important;border-color:var(--gj)!important}" +
-    ".fn-list{white-space:pre-line}[data-gj=counter]{font-weight:600}" +
-    ".fn-btn.w-radio,.fn-btn.w-checkbox{cursor:pointer;margin-bottom:0}" +
-    ".fn-btn:has(input:checked){border-color:var(--gj)!important;background:color-mix(in srgb,var(--gj) 10%,#fff)!important}" +
-    ".fn-btn .w-form-label{cursor:pointer;font-weight:600;margin-left:0}" +
-    ".w-radio-input,.w-checkbox-input{display:none}" +
-    "[data-gj=counter]{display:flex;gap:4px}" +
-    "[data-gj=bar-fill]{transition:width .35s ease}" +
-    ".gj-footer{text-align:center;font-size:12px;color:#6b7280;margin-top:18px}.gj-footer a{color:#6b7280;margin:0 8px}" +
-    ".fn-check .w-checkbox-input{display:inline-block!important;width:22px;height:22px;margin:0 12px 0 0}";
-  document.head.appendChild(css);
 
-  /* ---------- Intro: Kicker, Footer-Links ---------- */
-  var kicker = document.querySelector('[data-gj="kicker"]');
-  if (kicker) kicker.textContent = [C.stelle, C.ort].filter(Boolean).join(" · ");
-  var card = document.querySelector('[data-gj="card"]');
-  if (card && (C.ds || C.imp)) {
-    var f = document.createElement("div"); f.className = "gj-footer";
-    if (C.imp) f.innerHTML += '<a href="' + C.imp + '" target="_blank" rel="noopener">Impressum</a>';
-    if (C.ds) f.innerHTML += '<a href="' + C.ds + '" target="_blank" rel="noopener">Datenschutz</a>';
-    card.appendChild(f);
+  /* ---------- Fusszeile: Copyright, Impressum, Datenschutz ---------- */
+  var legal = q('[data-gj="legal"]');
+  if (legal) {
+    var html = "© " + new Date().getFullYear() + " " + esc(C.firma || "GlanzJobs");
+    var links = "";
+    if (safeUrl(C.imp)) links += '<a href="' + esc(C.imp) + '" target="_blank" rel="noopener">Impressum</a>';
+    if (safeUrl(C.ds)) links += '<a href="' + esc(C.ds) + '" target="_blank" rel="noopener">Datenschutz</a>';
+    legal.innerHTML = html + (links ? "<br>" + links : "");
   }
-  var dsLabel = document.querySelector('[data-gj="f-datenschutz"] .w-form-label');
-  if (dsLabel && C.ds) dsLabel.innerHTML += ' <a href="' + C.ds + '" target="_blank" rel="noopener">Datenschutzerklärung</a>';
+  var dsLabel = q('[data-gj="f-datenschutz"] .w-form-label');
+  if (dsLabel) dsLabel.innerHTML = (safeUrl(C.ds) ? '<a href="' + esc(C.ds) + '" target="_blank" rel="noopener">Datenschutzbestimmungen</a>' : "Datenschutzbestimmungen") + " gelesen und akzeptiert";
+
+  /* ---------- Kontaktfelder: Platzhalter, Namensfeld spalten, Pflicht nur auf dem sichtbaren Feld ---------- */
+  function setAttrs(el, attrs) { if (el) Object.keys(attrs).forEach(function (a) { el.setAttribute(a, attrs[a]); }); }
+  var fName = q('[data-gj="f-name"]'), fVor = document.getElementById("f-vorname"), fNach = document.getElementById("f-nachname");
+  setAttrs(fName, { id: "f-name", name: "name", "data-name": "name", placeholder: "Vor- und Nachname", autocomplete: "name", required: "required", minlength: "3" });
+  setAttrs(document.getElementById("f-telefon"), { placeholder: "Telefonnummer", autocomplete: "tel-national", inputmode: "tel" });
+  setAttrs(document.getElementById("f-email"), { placeholder: "E-Mail", autocomplete: "email", inputmode: "email" });
+  [fVor, fNach].forEach(function (el) { if (el) { el.removeAttribute("required"); el.setAttribute("tabindex", "-1"); el.setAttribute("aria-hidden", "true"); } });
+  function splitName() {
+    if (!fName) return;
+    var parts = fName.value.trim().replace(/\s+/g, " ").split(" ");
+    var last = parts.length > 1 ? parts.pop() : "";
+    if (fVor) fVor.value = parts.join(" ");
+    if (fNach) fNach.value = last;
+  }
+  if (fName) { fName.addEventListener("input", splitName); fName.addEventListener("change", splitName); }
+  function toE164(raw) {
+    var d = String(raw || "").replace(/\D/g, "");
+    if (!d) return raw;
+    if (d.indexOf("00") === 0) d = d.slice(2);
+    else if (d.indexOf("0") === 0) d = "49" + d.slice(1);
+    else if (d.indexOf("49") !== 0 || d.length < 10) d = "49" + d;
+    return "+" + d;
+  }
 
   /* ---------- Fragen-Schritte aus der Collection-Liste vorbereiten (vor Formly) ---------- */
   var steps = document.querySelectorAll('[data-gj="steps"] [data-gj="step"]');
@@ -76,25 +93,35 @@
     if (ko) { var kt = ko.querySelector('[data-gj="ko-text"]'); if (!kt || !kt.textContent.trim()) ko.remove(); else ko.setAttribute("data-answer-id", "ko"); }
     if (multi && answers) {
       answers.removeAttribute("data-radio-skip");
-      var next = document.createElement("a"); next.href = "#"; next.className = "fn-btn fn-btn-primary"; next.setAttribute("data-form", "next-btn");
+      var next = document.createElement("a"); next.href = "#"; next.className = "fn-btn fn-btn-primary"; next.setAttribute("data-form", "next-btn"); next.setAttribute("data-gj", "next");
       next.textContent = "Weiter"; answers.after(next);
+    }
+    if (si === 0) {
+      /* Erste Frage: Ort und bis zu zwei Benefits als Kurzzeile unter der Frage, Vertrauenszeile unter den Antworten. */
+      var qEl = step.querySelector('[data-gj="q"]'), items = [];
+      if (C.ort) items.push("📍 " + C.ort);
+      C.benefits.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 2).forEach(function (b) { items.push(b); });
+      if (qEl && items.length) { var meta = document.createElement("div"); meta.setAttribute("data-gj", "meta"); meta.innerHTML = items.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join(""); (hint && hint.parentNode ? hint : qEl).after(meta); }
+      var trust = document.createElement("p"); trust.className = "fn-note"; trust.setAttribute("data-gj", "trust");
+      trust.textContent = "Kein Lebenslauf nötig · 100 % unverbindlich · Antwort innerhalb von 48 Stunden"; step.appendChild(trust);
     }
   });
 
-  /* ---------- Zaehler und Fortschrittsbalken (eigene Logik, Formly-Zaehler deaktiviert) ---------- */
-  var counterEl = document.querySelector('[data-gj="counter"]'), bar = document.querySelector('[data-gj="bar"]'), fill = document.querySelector('[data-gj="bar-fill"]');
+  /* ---------- Zaehler und Fortschrittslinie (eigene Logik, Formly-Zaehler deaktiviert) ---------- */
+  var counterEl = q('[data-gj="counter"]'), fill = q('[data-gj="bar-fill"]');
   document.querySelectorAll("[data-text]").forEach(function (el) { el.removeAttribute("data-text"); });
   var allSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
-  var contactSeen = false;
+  var total = Math.max(1, allSteps.length - 2);     /* Fragen = alle Schritte ohne die zwei Kontaktschritte */
+  var contactSeen = false, done = false;
   function paint() {
+    if (done) return;
     var idx = -1;
     allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
-    var total = allSteps.length - 2;                 /* ohne Intro und ohne Kontaktschritt */
-    var onIntro = idx <= 0, onContact = idx >= allSteps.length - 1;
-    if (onContact && !contactSeen && allSteps.length > 1) { contactSeen = true; dl({ event: "gj_contact_view" }); }
-    if (counterEl) { counterEl.style.visibility = onIntro ? "hidden" : "visible"; counterEl.textContent = onIntro ? "" : (onContact ? "Letzter Schritt" : ("Frage " + idx + " von " + total)); }
-    if (bar) bar.style.visibility = onIntro ? "hidden" : "visible";
-    if (fill) fill.style.width = (onContact ? 100 : Math.max(4, Math.round((Math.max(0, idx) / Math.max(1, total + 1)) * 100))) + "%";
+    if (idx < 0) idx = 0;
+    var onContact = idx >= total;
+    if (onContact && !contactSeen) { contactSeen = true; dl({ event: "gj_contact_view" }); }
+    if (counterEl) counterEl.textContent = idx < total ? ("Frage " + (idx + 1) + " von " + total) : (idx === total ? "Fast geschafft" : "Letzter Schritt");
+    if (fill) fill.style.width = Math.max(6, Math.round(((idx + 1) / (total + 2)) * 100)) + "%";
   }
   var mo = new MutationObserver(paint);
   allSteps.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ["style", "class"] }); });
@@ -131,16 +158,21 @@
   }
   function writeAll() { Object.keys(V).forEach(function (key) { setField(key, V[key]); }); }
   writeAll(); var end = Date.now() + 5000; var iv = setInterval(function () { writeAll(); if (Date.now() > end) clearInterval(iv); }, 300);
-  document.addEventListener("submit", function () { setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll(); }, true);
+  document.addEventListener("submit", function () {
+    splitName();
+    var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
+    setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll();
+  }, true);
   function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid(); window.__gjLastEventId = obj.event_id; window.dataLayer.push(obj); return obj.event_id; }
   dl(Object.assign({ event: "gj_attribution_ready" }, V));
 
-  /* ---------- Lead-Events bei sichtbarer Erfolgsmeldung (Lead + SubmitApplication, mit user_data fuer den Abgleich) ---------- */
+  /* ---------- Erfolgsmeldung: Darstellung umschalten, Lead-Events (Lead + SubmitApplication, mit user_data fuer den Abgleich) ---------- */
   function val(id) { var el = document.getElementById(id); return el && el.value ? String(el.value).trim() : ""; }
-  function normPhone(p) { var d = p.replace(/\D/g, ""); if (d.indexOf("00") === 0) d = d.slice(2); else if (d.indexOf("0") === 0) d = "49" + d.slice(1); return d; }
+  function normPhone(p) { return toE164(p).replace(/\D/g, ""); }
   var okEl = document.getElementById("bewerbung-erfolgreich"), leadSent = false;
   function checkLead() {
     if (leadSent || !okEl || getComputedStyle(okEl).display === "none") return; leadSent = true;
+    done = true; if (page) page.setAttribute("data-gj-state", "done"); if (fill) fill.style.width = "100%";
     var plzOrt = val("f-plz-ort"), zip = (plzOrt.match(/\b\d{5}\b/) || [""])[0], city = plzOrt.replace(/\b\d{5}\b/, "").replace(/[,\s]+/g, " ").trim();
     var ud = { em: val("f-email").toLowerCase(), ph: normPhone(val("f-telefon")), fn: val("f-vorname"), ln: val("f-nachname"), zp: zip, ct: city, country: "de",
                external_id: eid, fbc: fbc || "", fbp: fbp };
@@ -168,7 +200,7 @@
   var contactDone = false;
   document.addEventListener("focusin", function (e) {
     if (contactDone) return; var t = e.target;
-    if (t && t.closest && t.closest("#contact") && t.matches("input, textarea")) { contactDone = true; dl({ event: "contact_start" }); }
+    if (t && t.closest && t.closest('[data-gj="contact"], [data-gj="contact2"]') && t.matches("input, textarea")) { contactDone = true; dl({ event: "contact_start" }); }
   }, true);
 
   /* ---------- Zeit-Events (aktiv sichtbare Zeit) ---------- */
@@ -182,7 +214,7 @@
   /* ---------- Verlassen-Warnung ---------- */
   var dirty = false, safe = false;
   ["pointerdown", "keydown", "input", "change"].forEach(function (ev) { document.addEventListener(ev, function () { dirty = true; }, { capture: true, passive: true }); });
-  document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('a[href*="/absage"], [type="submit"]')) safe = true; }, true);
+  document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('a[href*="/absage"], [type="submit"], [data-gj="ghost"], [data-gj="legal"] a, [data-gj="inno"]')) safe = true; }, true);
   document.addEventListener("submit", function () { safe = true; }, true);
   window.addEventListener("beforeunload", function (e) { if (!dirty || safe) return; e.preventDefault(); e.returnValue = ""; });
 })();
