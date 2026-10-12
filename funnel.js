@@ -1,7 +1,6 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
-   Version 8: verstecktes Feld leadtable_json = fertiges Zielpaket im Perspective-Kontaktformat fuer den LeadTable-Webhook (Make reicht es durch).
    Version 7 (Struktur nach Perspective-Vorlage): Platzhalter [Stelle]/[Beruf]/[Ort] in Fragen und Antworten, Freitext-Fragen (CMS-Feld Freitext-Platzhalter) als Textfeld mit Weiter-Knopf, fester Schritt 'Woher kommst Du?' (plz_ort), Kurzzeile unter Frage 1 mit Ort, Zeitmodell und Start.
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
@@ -186,40 +185,10 @@
   writeAll(); var end = Date.now() + 5000; var iv = setInterval(function () { writeAll(); if (Date.now() > end) clearInterval(iv); }, 300);
   /* Formly loest das Absenden ueber jQuery aus, dabei feuert kein natives submit-Ereignis. Deshalb zusaetzlich am Klick auf den
      Absenden-Knopf und an der Eingabetaste im letzten Schritt ansetzen. */
-  /* Fertiges Zielpaket im Perspective-Kontaktformat (so erwartet es der LeadTable-Webhook vom Typ Perspective). Make reicht
-     das Feld leadtable_json unveraendert an den Ziel-Webhook der Stelle weiter. properties = nur die Antworten (Schluessel = Frage-ID). */
-  function answers() {
-    var out = {}, form = document.getElementById("bewerbung-form"); if (!form) return out;
-    var ids = Array.prototype.map.call(document.querySelectorAll('[data-gj="step"][data-question-id]'), function (s) { return s.getAttribute("data-question-id"); });
-    ids.forEach(function (id) {
-      Array.prototype.forEach.call(form.querySelectorAll('[name="' + id + '"]'), function (el) {
-        if (el.type === "radio" || el.type === "checkbox") { if (el.checked) out[id] = el.value; }
-        else if (el.value) out[id] = el.value;
-      });
-    });
-    return out;
-  }
-  function p(k) { return getParam(k) || ss("gj_p_" + k) || ""; }
-  function buildTarget() {
-    var now = new Date().toISOString(), tel = val("f-telefon");
-    var props = answers(); if (val("f-plz-ort")) props.plz_ort = val("f-plz-ort");
-    if (fbclid) props.fbclid = fbclid; if (p("utm_id")) props.utm_id = p("utm_id");
-    return {
-      email: val("f-email").toLowerCase(), phone: tel ? toE164(tel) : "", name: val("f-name") || (val("f-vorname") + " " + val("f-nachname")).trim(),
-      firstName: val("f-vorname"), lastName: val("f-nachname"), address: { city: val("f-plz-ort") }, timezone: "Europe/Berlin",
-      utmParams: { utm_source: p("utm_source") || p("site_source_name"), utm_medium: p("utm_medium") || p("placement"), utm_campaign: p("campaign_name") || p("utm_campaign"),
-                   utm_term: p("adset_name") || p("utm_term"), utm_content: p("ad_name") || p("utm_content") },
-      properties: props,
-      meta: { ps_timezone: "Europe/Berlin", ps_source: "funnel", ps_start_slug: C.slug, ps_start_page: "Startseite", ps_result_page: "Best\u00e4tigung",
-              ps_first_seen_at: new Date(Number(start)).toISOString(), ps_converted_at: now, ps_completed_at: now, ps_embed: false,
-              stelle: C.stelle, kunde: C.firma, ort: C.ort, external_id: eid }
-    };
-  }
   function prepareSubmit() {
     splitName();
     var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
     setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll();
-    try { setField("leadtable_json", JSON.stringify(buildTarget())); } catch (e) {}
   }
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
