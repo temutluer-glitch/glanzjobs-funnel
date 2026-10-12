@@ -3,7 +3,7 @@
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
-   Telefonnummer wird beim Absenden auf +49-Format gebracht; Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
+   Telefonnummer wird beim Absenden auf +49-Format gebracht (Haken am Klick/Enter, weil Formly per jQuery absendet); Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
    Version 5: event_id auf jeder dataLayer-Meldung, gj_contact_view/gj_lead/gj_submit_application mit user_data, Pixel nur via Tag Manager. */
 (function () {
   "use strict";
@@ -22,6 +22,13 @@
   /* ---------- Kundenfarbe (alles Weitere steht in funnel.css) ---------- */
   var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#335e7b";
   document.documentElement.style.setProperty("--gj", color);
+
+  /* ---------- Kopf: ohne Kundenlogo steht der Firmenname als Text ---------- */
+  var logoEl = q('[data-gj="logo"]');
+  if (logoEl && !C.logo) {
+    logoEl.style.display = "none";
+    var lt = document.createElement("span"); lt.setAttribute("data-gj", "logo-text"); lt.textContent = C.firma || "GlanzJobs"; logoEl.after(lt);
+  }
 
   /* ---------- Fusszeile: Copyright, Impressum, Datenschutz ---------- */
   var legal = q('[data-gj="legal"]');
@@ -158,11 +165,16 @@
   }
   function writeAll() { Object.keys(V).forEach(function (key) { setField(key, V[key]); }); }
   writeAll(); var end = Date.now() + 5000; var iv = setInterval(function () { writeAll(); if (Date.now() > end) clearInterval(iv); }, 300);
-  document.addEventListener("submit", function () {
+  /* Formly loest das Absenden ueber jQuery aus, dabei feuert kein natives submit-Ereignis. Deshalb zusaetzlich am Klick auf den
+     Absenden-Knopf und an der Eingabetaste im letzten Schritt ansetzen. */
+  function prepareSubmit() {
     splitName();
     var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
     setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll();
-  }, true);
+  }
+  document.addEventListener("submit", prepareSubmit, true);
+  document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
+  document.addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target && e.target.closest && e.target.closest('[data-gj="contact2"]')) prepareSubmit(); }, true);
   function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid(); window.__gjLastEventId = obj.event_id; window.dataLayer.push(obj); return obj.event_id; }
   dl(Object.assign({ event: "gj_attribution_ready" }, V));
 

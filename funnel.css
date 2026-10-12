@@ -24,6 +24,7 @@ section[data-gj=page]{display:block;min-height:100vh;padding:0 0 28px}
 /* Kopf: Kundenlogo links, GlanzJobs-Siegel rechts, duenne Fortschrittslinie */
 [data-gj=page] [data-gj=top]{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;background:#fff;padding:12px max(16px,calc((100% - 980px)/2));color:inherit;font-size:inherit;letter-spacing:0;text-transform:none}
 [data-gj=page] [data-gj=logo]{display:block;height:52px;width:auto;max-width:46%;max-height:none;object-fit:contain}
+[data-gj=page] [data-gj=logo-text]{font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--gj-fg)}
 [data-gj=page] [data-gj=seal]{display:block;height:46px;width:auto;max-width:46%;object-fit:contain}
 @media (max-width:400px){[data-gj=page] [data-gj=logo]{height:44px}[data-gj=page] [data-gj=seal]{height:40px}}
 [data-gj=page] [data-gj=bar]{height:5px;margin:0;border-radius:0;background:var(--gj-line);overflow:hidden;visibility:visible}
