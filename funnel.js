@@ -1,6 +1,9 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 10: verstecktes Feld lead_json = Zielpaket fuer den LeadTable-Webhook (generischer Typ) mit NUR den Antworten des Bewerbers
+   (Schluessel = Frage-ID) plus Kontaktdaten (vorname, nachname, telefon, email, plz_ort, datenschutz). Keine Stellen-, Technik- oder
+   Werbefelder; die bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make reicht lead_json unveraendert an den Ziel-Webhook weiter.
    Version 7 (Struktur nach Perspective-Vorlage): Platzhalter [Stelle]/[Beruf]/[Ort] in Fragen und Antworten, Freitext-Fragen (CMS-Feld Freitext-Platzhalter) als Textfeld mit Weiter-Knopf, fester Schritt 'Woher kommst Du?' (plz_ort), Kurzzeile unter Frage 1 mit Ort, Zeitmodell und Start.
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
@@ -185,10 +188,30 @@
   writeAll(); var end = Date.now() + 5000; var iv = setInterval(function () { writeAll(); if (Date.now() > end) clearInterval(iv); }, 300);
   /* Formly loest das Absenden ueber jQuery aus, dabei feuert kein natives submit-Ereignis. Deshalb zusaetzlich am Klick auf den
      Absenden-Knopf und an der Eingabetaste im letzten Schritt ansetzen. */
+  /* Zielpaket fuer den LeadTable-Webhook: NUR Antworten (Schluessel = Frage-ID, Mehrfachauswahl als "A; B") plus Kontaktdaten. */
+  function answers() {
+    var out = {}, form = document.getElementById("bewerbung-form"); if (!form) return out;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-gj="step"][data-question-id]'), function (s) {
+      var id = s.getAttribute("data-question-id"); if (!id) return;
+      Array.prototype.forEach.call(form.querySelectorAll('[name="' + id + '"]'), function (el) {
+        if (el.type === "radio" || el.type === "checkbox") { if (el.checked) out[id] = el.value; }
+        else if (el.value && String(el.value).trim()) out[id] = String(el.value).trim();
+      });
+    });
+    return out;
+  }
+  function buildLead() {
+    var out = { vorname: ((fVor && fVor.value) || "").trim(), nachname: ((fNach && fNach.value) || "").trim(),
+                telefon: val("f-telefon"), email: val("f-email"), plz_ort: val("f-plz-ort") };
+    var a = answers(); Object.keys(a).forEach(function (key) { out[key] = a[key]; });
+    var ds = document.getElementById("f-datenschutz"); if (ds) out.datenschutz = ds.checked ? "true" : "false";
+    return out;
+  }
   function prepareSubmit() {
     splitName();
     var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
     setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll();
+    try { setField("lead_json", JSON.stringify(buildLead())); } catch (e) {}
   }
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
