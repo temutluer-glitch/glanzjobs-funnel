@@ -1,6 +1,9 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 12: Verzweigung. Endet ein Antworttext im CMS auf [>frage-id] (oder [>kontakt]), springt der Funnel dorthin. Nur dann schaltet
+   funnel.js Formly in den Logikmodus (Karten data-answer, data-go-to, data-skip-to), zaehlt "Frage k" ohne Gesamtzahl, prueft Mehrfachauswahl
+   (mindestens ein Haken), Telefon und Datenschutz selbst und sendet nur Antworten aus dem gegangenen Pfad. Stellen ohne Sprungziel: unveraendert.
    Version 11: lead_json enthaelt zusaetzlich die Werbe- und Technikfelder (utm_*, campaign_name, adset_name, ad_name, fbclid, fbp, fbc,
    external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel), weil LeadTable sie je Kampagne zuordnet.
    Weiterhin NICHT dabei: name (nur vorname/nachname), stelle, kunde, stellenbezeichnung, ort, pixel_id, ziel_webhook.
@@ -138,6 +141,83 @@
     }
   });
 
+  /* ---------- Verzweigung (seit Version 12, nur aktiv, wenn eine Antwort ein Sprungziel traegt) ----------
+     Sprungziel im CMS: Antworttext endet auf [>frage-id], z. B. "Vormittags, 10:00 bis 14:00 Uhr [>umfang_tag]".
+     [>kontakt] springt zum ersten Kontaktschritt. Das Kuerzel wird vor der Anzeige entfernt und nie gesendet.
+     Ohne ein einziges Sprungziel bleibt der Funnel exakt im bisherigen Formly-Grundmodus (keine Aenderung fuer bestehende Stellen).
+     Mit Sprungzielen: Formly-Logikmodus (data-logic-extra), jeder Schritt bekommt eine Karte data-answer=<Schluessel>,
+     jede Antwort data-go-to (Zielschluessel) und bei Spruengen data-skip-to (Schrittnummer, 1-basiert). Nur Vorwaerts-Spruenge. */
+  var JUMP = /\s*\[>\s*([a-z0-9_-]+)\s*\]\s*$/i;
+  var flowSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="multistep"] [data-form="step"]'));
+  var branching = false, stepKey = [], keyIndex = {};
+  flowSteps.forEach(function (s, i) {
+    var key = s.getAttribute("data-question-id") || (s.getAttribute("data-gj") === "ort-step" ? "kontakt" : (s.getAttribute("data-gj") || ("schritt_" + (i + 1))));
+    stepKey[i] = key; if (!(key in keyIndex)) keyIndex[key] = i;
+    s.querySelectorAll("input").forEach(function (inp) { var m = JUMP.exec(inp.value || ""); if (m) branching = true; });
+  });
+  window.__gjBranching = branching;
+  var edges = [];
+  if (branching) {
+    var form = document.querySelector('[data-form="multistep"]'); if (form) form.setAttribute("data-logic-extra", "true");
+    flowSteps.forEach(function (s, i) {
+      var nextKey = stepKey[i + 1] || "";
+      edges[i] = {};
+      /* Karte um den gesamten Inhalt des Schritts legen */
+      var card = document.createElement("div"); card.setAttribute("data-answer", stepKey[i]); card.setAttribute("data-gj", "zweig");
+      if (nextKey) card.setAttribute("data-go-to", nextKey);
+      while (s.firstChild) card.appendChild(s.firstChild);
+      s.appendChild(card);
+      if (nextKey) edges[i][i + 1] = 1;
+      s.querySelectorAll("label").forEach(function (lab) {
+        var inp = lab.querySelector("input"), span = lab.querySelector(".w-form-label"); if (!inp) return;
+        /* Im Logikmodus darf der Radio-Knopf nicht selbst "Weiter" ausloesen, sonst springt Formly vor dem Merken der Auswahl.
+           Das Weiterschalten uebernimmt data-radio-skip auf dem Antwortblock. */
+        if (inp.type === "radio" && inp.getAttribute("data-form") === "next-btn") inp.removeAttribute("data-form");
+        var m = JUMP.exec(inp.value || ""); if (!m) return;
+        var target = m[1].toLowerCase(), clean = inp.value.replace(JUMP, "");
+        inp.value = clean; if (span) span.textContent = span.textContent.replace(JUMP, "");
+        var ti = keyIndex[target];
+        if (ti == null || ti <= i) { if (window.console) console.warn("[gj] Sprungziel ungueltig oder rueckwaerts:", target, "in", stepKey[i]); return; }
+        lab.setAttribute("data-go-to", target);
+        if (ti !== i + 1) lab.setAttribute("data-skip-to", String(ti + 1));
+        edges[i][ti] = 1;
+      });
+      /* Mehrfachauswahl: Kaestchen-Antworten tragen kein eigenes Ziel, es gilt das Ziel der Karte */
+    });
+    /* Im Logikmodus schaltet Formly die Browser-Pflichtfeldpruefung ab. Deshalb hier selbst pruefen:
+       Mehrfachauswahl mindestens ein Haken, im letzten Schritt Telefon und Datenschutz-Haken. */
+    var msg = function (anchor, text) {
+      var m = anchor.parentNode.querySelector('[data-gj="must"]');
+      if (!m) { m = document.createElement("p"); m.setAttribute("data-gj", "must"); m.className = "fn-hint"; m.style.color = "#b42318"; anchor.after(m); }
+      m.textContent = text; setTimeout(function () { if (m && m.parentNode) m.remove(); }, 4000);
+    };
+    var guard = function (e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-gj="next"], [data-gj="ok-btn"], [data-form="submit-btn"], [type="submit"]');
+      if (e.type === "keydown") { if (e.key !== "Enter") return; t = e.target && e.target.closest && e.target.closest('[data-gj="contact2"]'); }
+      if (!t) return;
+      var step = t.closest('[data-form="step"]'); if (!step) return;
+      var bad = null;
+      if (step.matches('[data-gj="step"]')) {
+        if (step.querySelector("input[data-gj-multi]") && !step.querySelector("input[data-gj-multi]:checked")) bad = [t, "Bitte wähle mindestens eine Antwort."];
+      } else {
+        Array.prototype.forEach.call(step.querySelectorAll("input[required]"), function (el) {
+          if (bad || el.offsetParent === null) return;
+          if (el.type === "checkbox" ? !el.checked : !String(el.value || "").trim()) bad = [el.type === "checkbox" ? (el.closest("label") || el) : el, el.type === "checkbox" ? "Bitte bestätige die Datenschutzbestimmungen." : "Bitte fülle dieses Feld aus."];
+        });
+      }
+      if (bad) { e.preventDefault(); e.stopImmediatePropagation(); msg(bad[0], bad[1]); }
+    };
+    document.addEventListener("click", guard, true);
+    document.addEventListener("keydown", guard, true);
+    /* Bewerber, die vorher eine andere Richtung gewaehlt hatten: Antworten nicht besuchter Schritte beim Absenden leeren */
+  }
+  function remaining(i) { /* kuerzeste Restlaenge bis zum Kontaktschritt (Breitensuche ueber die Sprungkanten) */
+    var goal = keyIndex.kontakt != null ? keyIndex.kontakt : flowSteps.length - 2, dist = {}, queue = [i]; dist[i] = 0;
+    while (queue.length) { var c = queue.shift(); if (c >= goal) return dist[c]; Object.keys(edges[c] || {}).forEach(function (n) { n = +n; if (dist[n] == null) { dist[n] = dist[c] + 1; queue.push(n); } }); }
+    return Math.max(0, goal - i);
+  }
+  var visited = [];
+
   /* ---------- Zaehler und Fortschrittslinie (eigene Logik, Formly-Zaehler deaktiviert) ---------- */
   var counterEl = q('[data-gj="counter"]'), fill = q('[data-gj="bar-fill"]');
   document.querySelectorAll("[data-text]").forEach(function (el) { el.removeAttribute("data-text"); });
@@ -149,6 +229,18 @@
     var idx = -1;
     allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
     if (idx < 0) idx = 0;
+    if (branching) {
+      /* Pfad mitschreiben (zurueck = Pfad kuerzen), Zaehler = Position im Pfad von voraussichtlicher Pfadlaenge */
+      var pos = visited.indexOf(idx); if (pos >= 0) visited = visited.slice(0, pos + 1); else visited.push(idx);
+      var goal = keyIndex.kontakt != null ? keyIndex.kontakt : total;
+      var onC = idx >= goal;
+      if (onC && !contactSeen) { contactSeen = true; dl({ event: "gj_contact_view" }); }
+      /* Gesamtzahl haengt vom Pfad ab, deshalb nur "Frage k" (eine wechselnde Gesamtzahl wirkt wie ein Fehler). Balken = geschaetzter Rest. */
+      var k = visited.filter(function (v) { return v < goal; }).length, n = onC ? k : (k - 1 + remaining(idx) + 1);
+      if (counterEl) counterEl.textContent = !onC ? ("Frage " + k) : (idx === goal ? "Fast geschafft" : "Letzter Schritt");
+      if (fill) fill.style.width = Math.max(6, Math.round((onC ? (k + 1 + (idx - goal)) / (k + 3) : k / (n + 3)) * 100)) + "%";
+      return;
+    }
     var onContact = idx >= total;
     if (onContact && !contactSeen) { contactSeen = true; dl({ event: "gj_contact_view" }); }
     if (counterEl) counterEl.textContent = idx < total ? ("Frage " + (idx + 1) + " von " + total) : (idx === total ? "Fast geschafft" : "Letzter Schritt");
@@ -215,6 +307,14 @@
     return out;
   }
   function prepareSubmit() {
+    if (branching) {
+      /* Nur Antworten aus dem tatsaechlich gegangenen Pfad senden (Richtungswechsel per Zurueck hinterlassen sonst alte Antworten) */
+      flowSteps.forEach(function (s, i) {
+        if (visited.indexOf(i) >= 0 || !s.matches('[data-gj="step"]')) return;
+        s.querySelectorAll("input").forEach(function (el) { if (el.type === "radio" || el.type === "checkbox") el.checked = false; else if (el.type === "hidden") el.value = ""; });
+        s.querySelectorAll("textarea").forEach(function (el) { el.value = ""; });
+      });
+    }
     splitName();
     var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
     var tof = String(Math.round((Date.now() - Number(start)) / 1000));
