@@ -1,6 +1,9 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 11: lead_json enthaelt zusaetzlich die Werbe- und Technikfelder (utm_*, campaign_name, adset_name, ad_name, fbclid, fbp, fbc,
+   external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel), weil LeadTable sie je Kampagne zuordnet.
+   Weiterhin NICHT dabei: name (nur vorname/nachname), stelle, kunde, stellenbezeichnung, ort, pixel_id, ziel_webhook.
    Version 10: verstecktes Feld lead_json = Zielpaket fuer den LeadTable-Webhook (generischer Typ) mit NUR den Antworten des Bewerbers
    (Schluessel = Frage-ID) plus Kontaktdaten (vorname, nachname, telefon, email, plz_ort, datenschutz). Keine Stellen-, Technik- oder
    Werbefelder; die bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make reicht lead_json unveraendert an den Ziel-Webhook weiter.
@@ -200,18 +203,23 @@
     });
     return out;
   }
-  function buildLead() {
+  var LEAD_SKIP = { stelle: 1, kunde: 1, stellenbezeichnung: 1, ort: 1, pixel_id: 1, ziel_webhook: 1 };
+  function buildLead(tof) {
     var out = { vorname: ((fVor && fVor.value) || "").trim(), nachname: ((fNach && fNach.value) || "").trim(),
                 telefon: val("f-telefon"), email: val("f-email"), plz_ort: val("f-plz-ort") };
     var a = answers(); Object.keys(a).forEach(function (key) { out[key] = a[key]; });
     var ds = document.getElementById("f-datenschutz"); if (ds) out.datenschutz = ds.checked ? "true" : "false";
+    /* Werbe- und Technikfelder (Attribution) mitgeben, Stellen-Angaben und Ziel-Adresse nicht. */
+    Object.keys(V).forEach(function (key) { if (!LEAD_SKIP[key] && V[key] != null && V[key] !== "") out[key] = V[key]; });
+    if (tof) out.time_on_funnel = tof;
     return out;
   }
   function prepareSubmit() {
     splitName();
     var tel = document.getElementById("f-telefon"); if (tel && tel.value.trim()) tel.value = toE164(tel.value);
-    setField("time_on_funnel", String(Math.round((Date.now() - Number(start)) / 1000))); writeAll();
-    try { setField("lead_json", JSON.stringify(buildLead())); } catch (e) {}
+    var tof = String(Math.round((Date.now() - Number(start)) / 1000));
+    setField("time_on_funnel", tof); writeAll();
+    try { setField("lead_json", JSON.stringify(buildLead(tof))); } catch (e) {}
   }
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
