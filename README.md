@@ -22,6 +22,7 @@ Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das vers
 
 - Jede geklickte Antwort loest zusaetzlich die dataLayer-Meldung `gj_answer` aus, mit `meta_event` = "Antwort: <frage-id> = <antwort>" (nur ASCII, hoechstens 50 Zeichen, wie Perspective "Answer Clicked: ...") und `meta_cd` mit frage, antwort, schritt und content_name. Der Tag Manager sendet sie als eigenes Meta-Ereignis (Browser und Server), damit in Meta eigene Conversions je Antwort moeglich sind.
 - `gj_lead`, `gj_submit_application` und `quiz_ko` tragen `meta_cd` mit allen Antworten (Schluessel = Frage-ID) plus content_name, content_category "Bewerbung", time_on_funnel und erreichter Interesse-Stufe; der Server-Tag haengt das Objekt als custom_data an.
+- 13.1 (gleicher Tag): `meta_event`, `meta_cd`, `quiz_step` und `answer` werden in JEDER dataLayer-Meldung ausdruecklich auf null gesetzt, wenn die Meldung sie nicht selbst traegt. Grund: Der Tag Manager merkt sich Werte im Datenmodell bis zur naechsten Meldung, die sie ueberschreibt; im ersten Test hiessen InitiateCheckout, Contact, Lead und SubmitApplication deshalb "Antwort: abwann = Ab sofort". Gepinnt ist Commit dda7891.
 - `window.__gjLast` haelt die zuletzt gemeldete dataLayer-Meldung, damit der Browser-Pixel-Tag die Zusatzfelder uebernehmen kann.
 - Tag Manager: Web-Variablen DLV - meta_event und JS - Meta Event Name final, Trigger CE - Meta Events um gj_answer erweitert, Tags HTML - Meta Pixel - Event und Data Tag nutzen den neuen Namen; Server: Variable ED - meta_cd, CAPI-Tag mit customDataObject.
 
