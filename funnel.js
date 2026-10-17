@@ -14,7 +14,7 @@
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
    Telefonnummer wird beim Absenden auf +49-Format gebracht (Haken am Klick/Enter, weil Formly per jQuery absendet); Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
-   Version 13 (13.1: meta_event/meta_cd/quiz_step/answer werden je Meldung zurueckgesetzt; 13.2: meta_cd_json als JSON-Text fuer den Server-Tag): eigenes Meta-Ereignis je geklickter Antwort (gj_answer mit meta_event "Antwort: <frage> = <antwort>" und meta_cd),
+   Version 13 (13.1: meta_event/meta_cd/quiz_step/answer werden je Meldung zurueckgesetzt; 13.2: meta_cd_json als JSON-Text fuer den Server-Tag; 13.3: user_data mit den vom Server-Tag erkannten Feldnamen email/phone/first_name/last_name/postal_code/address[].city): eigenes Meta-Ereignis je geklickter Antwort (gj_answer mit meta_event "Antwort: <frage> = <antwort>" und meta_cd),
    alle Antworten als custom_data (meta_cd) auf gj_lead, gj_submit_application und quiz_ko, window.__gjLast fuer den Tag Manager.
    Version 5: event_id auf jeder dataLayer-Meldung, gj_contact_view/gj_lead/gj_submit_application mit user_data, Pixel nur via Tag Manager. */
 (function () {
@@ -348,9 +348,12 @@
     if (leadSent || !okEl || getComputedStyle(okEl).display === "none") return; leadSent = true;
     done = true; if (page) page.setAttribute("data-gj-state", "done"); if (fill) fill.style.width = "100%";
     var plzOrt = val("f-plz-ort"), zip = (plzOrt.match(/\b\d{5}\b/) || [""])[0], city = plzOrt.replace(/\b\d{5}\b/, "").replace(/[,\s]+/g, " ").trim();
-    var ud = { em: val("f-email").toLowerCase(), ph: normPhone(val("f-telefon")), fn: val("f-vorname"), ln: val("f-nachname"), zp: zip, ct: city, country: "de",
-               external_id: eid, fbc: fbc || "", fbp: fbp };
+    /* 13.3: Feldnamen, die der Stape-Meta-Server-Tag automatisch erkennt (email, phone, first_name, last_name, postal_code, address[].city);
+       die Kurzformen em/ph/fn/ln/zp/ct hat er ignoriert, deshalb fehlten E-Mail, Telefon, Name und PLZ beim Server-Lead. Hashing macht der Server. */
+    var ud = { email: val("f-email").toLowerCase(), phone: normPhone(val("f-telefon")), first_name: val("f-vorname"), last_name: val("f-nachname"),
+               postal_code: zip, city: city, country: "de", external_id: eid, fbc: fbc || "", fbp: fbp };
     Object.keys(ud).forEach(function (key) { if (!ud[key]) delete ud[key]; });
+    ud.address = [{ first_name: ud.first_name || "", last_name: ud.last_name || "", city: city || "", postal_code: zip || "", country: "de" }];
     var tof = Math.round((Date.now() - Number(start)) / 1000);
     /* Alle Antworten als Zusatzfelder (custom_data) mitgeben, Schluessel = Frage-ID: erlaubt in Meta eigene Conversions wie "Lead mit fuehrerschein = Ja". */
     var cd = {}; try { var ans = answers(); Object.keys(ans).forEach(function (key) { cd[key] = ans[key]; }); } catch (e) {}
