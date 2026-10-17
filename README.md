@@ -18,6 +18,13 @@ Beide Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). N
 
 Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das versteckte Feld `lead_json`. Darin stehen: die Antworten des Bewerbers (Schluessel = Frage-ID aus der Fragenbank, Mehrfachauswahl als "A; B"), Kontaktdaten `vorname`, `nachname`, `telefon` (+49-Format), `email`, `plz_ort`, `datenschutz` (true/false) sowie die Werbe- und Technikfelder fuer die Zuordnung in LeadTable (utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id, campaign_name, adset_name, ad_name, placement, site_source_name, gclid, ttclid, msclkid, fbclid, fbp, fbc, external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel; nur wenn gefuellt). NICHT dabei: `name` (doppelt zu vorname/nachname), `stelle`, `kunde`, `stellenbezeichnung`, `ort` (Einsatzort der Stelle), `pixel_id`, `ziel_webhook`. Diese bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make-Szenario 7876191 sendet im HTTP-Modul `lead_json` unveraendert an den Ziel-Webhook der Stelle (Fallback auf das volle Formular nur, wenn lead_json fehlt).
 
+## Version 13 (2026-10-17): Antwort-Ereignisse und Zusatzfelder fuer Meta
+
+- Jede geklickte Antwort loest zusaetzlich die dataLayer-Meldung `gj_answer` aus, mit `meta_event` = "Antwort: <frage-id> = <antwort>" (nur ASCII, hoechstens 50 Zeichen, wie Perspective "Answer Clicked: ...") und `meta_cd` mit frage, antwort, schritt und content_name. Der Tag Manager sendet sie als eigenes Meta-Ereignis (Browser und Server), damit in Meta eigene Conversions je Antwort moeglich sind.
+- `gj_lead`, `gj_submit_application` und `quiz_ko` tragen `meta_cd` mit allen Antworten (Schluessel = Frage-ID) plus content_name, content_category "Bewerbung", time_on_funnel und erreichter Interesse-Stufe; der Server-Tag haengt das Objekt als custom_data an.
+- `window.__gjLast` haelt die zuletzt gemeldete dataLayer-Meldung, damit der Browser-Pixel-Tag die Zusatzfelder uebernehmen kann.
+- Tag Manager: Web-Variablen DLV - meta_event und JS - Meta Event Name final, Trigger CE - Meta Events um gj_answer erweitert, Tags HTML - Meta Pixel - Event und Data Tag nutzen den neuen Namen; Server: Variable ED - meta_cd, CAPI-Tag mit customDataObject.
+
 ## Verzweigung (seit Version 12)
 
 Eine Antwort kann zu einer spaeteren Frage springen. Dafuer im CMS (Fragenbank) den Antworttext mit dem Sprungziel abschliessen:
