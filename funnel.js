@@ -14,6 +14,8 @@
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
    Telefonnummer wird beim Absenden auf +49-Format gebracht (Haken am Klick/Enter, weil Formly per jQuery absendet); Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
+   Version 13: eigenes Meta-Ereignis je geklickter Antwort (gj_answer mit meta_event "Antwort: <frage> = <antwort>" und meta_cd),
+   alle Antworten als custom_data (meta_cd) auf gj_lead, gj_submit_application und quiz_ko, window.__gjLast fuer den Tag Manager.
    Version 5: event_id auf jeder dataLayer-Meldung, gj_contact_view/gj_lead/gj_submit_application mit user_data, Pixel nur via Tag Manager. */
 (function () {
   "use strict";
@@ -324,7 +326,12 @@
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
   document.addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target && e.target.closest && e.target.closest('[data-gj="contact2"]')) prepareSubmit(); }, true);
-  function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid(); window.__gjLastEventId = obj.event_id; window.dataLayer.push(obj); return obj.event_id; }
+  function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid(); window.__gjLastEventId = obj.event_id; window.__gjLast = obj; window.dataLayer.push(obj); return obj.event_id; }
+  /* Meta-Ereignisname je Antwort (wie Perspective "Answer Clicked: ..."): nur ASCII, max. 50 Zeichen; der Volltext steht in meta_cd. */
+  function ascii(s) { return String(s == null ? "" : s).replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").replace(/ß/g, "ss").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }
+  function answerEventName(qid, answer) { return ("Antwort: " + ascii(qid) + " = " + ascii(answer)).slice(0, 50).trim(); }
+  function stepIndex(step) { var all = document.querySelectorAll('[data-gj="step"][data-question-id]'); return Array.prototype.indexOf.call(all, step) + 1; }
+  function interestLevel() { var lvl = ""; try { TH.forEach(function (t) { if (fired[t[1]]) lvl = t[1]; }); } catch (e) {} return lvl; }
   dl(Object.assign({ event: "gj_attribution_ready" }, V));
 
   /* ---------- Erfolgsmeldung: Darstellung umschalten, Lead-Events (Lead + SubmitApplication, mit user_data fuer den Abgleich) ---------- */
@@ -339,8 +346,11 @@
                external_id: eid, fbc: fbc || "", fbp: fbp };
     Object.keys(ud).forEach(function (key) { if (!ud[key]) delete ud[key]; });
     var tof = Math.round((Date.now() - Number(start)) / 1000);
-    dl({ event: "gj_lead", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof });
-    dl({ event: "gj_submit_application", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof });
+    /* Alle Antworten als Zusatzfelder (custom_data) mitgeben, Schluessel = Frage-ID: erlaubt in Meta eigene Conversions wie "Lead mit fuehrerschein = Ja". */
+    var cd = {}; try { var ans = answers(); Object.keys(ans).forEach(function (key) { cd[key] = ans[key]; }); } catch (e) {}
+    cd.content_name = C.slug; cd.content_category = "Bewerbung"; cd.time_on_funnel = tof; var il = interestLevel(); if (il) cd.interest = il;
+    dl({ event: "gj_lead", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof, meta_cd: cd });
+    dl({ event: "gj_submit_application", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof, meta_cd: cd });
   }
   if (okEl) { new MutationObserver(checkLead).observe(okEl, { attributes: true, attributeFilter: ["style", "class"] }); setTimeout(checkLead, 0); }
 
@@ -349,13 +359,17 @@
     var el = e.target; if (!el || !el.matches('input[type="radio"], input[type="checkbox"]')) return;
     if (el.type === "radio" && !el.checked) return;
     var step = el.closest('[data-gj="step"]'); if (!step) return;
-    dl({ event: "quiz_answer", quiz_step: step.getAttribute("data-question-id"), answer: el.value, first_answer: !seenAnswer });
+    var qid = step.getAttribute("data-question-id"), ans = String(el.value == null ? "" : el.value).trim();
+    dl({ event: "quiz_answer", quiz_step: qid, answer: ans, first_answer: !seenAnswer });
     seenAnswer = true;
+    /* Eigenes Meta-Ereignis je geklickter Antwort, damit in Meta eigene Conversions je Antwort moeglich sind (meta_event = Name, meta_cd = Zusatzfelder). */
+    if (ans) { try { dl({ event: "gj_answer", quiz_step: qid, answer: ans, meta_event: answerEventName(qid, ans), meta_cd: { frage: qid, antwort: ans, schritt: stepIndex(step), content_name: C.slug } }); } catch (e) {} }
   }, true);
   document.addEventListener("click", function (e) {
     var a = e.target && e.target.closest && e.target.closest('a[href*="/absage"]'); if (!a) return;
     var step = a.closest('[data-gj="step"]');
-    dl({ event: "quiz_ko", quiz_step: step ? step.getAttribute("data-question-id") : "", answer: (a.textContent || "").trim() });
+    var kq = step ? step.getAttribute("data-question-id") : "", ka = (a.textContent || "").trim();
+    dl({ event: "quiz_ko", quiz_step: kq, answer: ka, meta_cd: { frage: kq, antwort: ka, schritt: step ? stepIndex(step) : 0, content_name: C.slug } });
   }, true);
   var contactDone = false;
   document.addEventListener("focusin", function (e) {
