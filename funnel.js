@@ -14,7 +14,7 @@
    Version 6 (Design cf-jobs-Muster): kein Intro mehr, Frage 1 ist der erste Schritt; Kontaktdaten in zwei Schritten
    (Name, dann Telefon/E-Mail); ein sichtbares Namensfeld, das in die versteckten Felder vorname/nachname gespalten wird;
    Telefonnummer wird beim Absenden auf +49-Format gebracht (Haken am Klick/Enter, weil Formly per jQuery absendet); Fusszeile mit Impressum/Datenschutz/InnoSolv; Design in funnel.css.
-   Version 13 (13.1: meta_event/meta_cd/quiz_step/answer werden je Meldung zurueckgesetzt): eigenes Meta-Ereignis je geklickter Antwort (gj_answer mit meta_event "Antwort: <frage> = <antwort>" und meta_cd),
+   Version 13 (13.1: meta_event/meta_cd/quiz_step/answer werden je Meldung zurueckgesetzt; 13.2: meta_cd_json als JSON-Text fuer den Server-Tag): eigenes Meta-Ereignis je geklickter Antwort (gj_answer mit meta_event "Antwort: <frage> = <antwort>" und meta_cd),
    alle Antworten als custom_data (meta_cd) auf gj_lead, gj_submit_application und quiz_ko, window.__gjLast fuer den Tag Manager.
    Version 5: event_id auf jeder dataLayer-Meldung, gj_contact_view/gj_lead/gj_submit_application mit user_data, Pixel nur via Tag Manager. */
 (function () {
@@ -330,6 +330,8 @@
     /* Felder, die nur fuer EINE Meldung gelten, in jeder Meldung ausdruecklich auf null setzen: der Tag Manager merkt sich Werte sonst
        bis zur naechsten Meldung, die sie ueberschreibt (Fehlerbild 17.10.: Lead hiess ploetzlich "Antwort: abwann = Ab sofort"). */
     ["meta_event", "meta_cd", "quiz_step", "answer"].forEach(function (k) { if (!(k in obj)) obj[k] = null; });
+    /* 13.2: Zusatzfelder zusaetzlich als JSON-Text (meta_cd_json), weil der Server-Tag das Objekt nicht sauber uebernimmt. */
+    try { obj.meta_cd_json = obj.meta_cd && typeof obj.meta_cd === "object" ? JSON.stringify(obj.meta_cd) : null; } catch (e) { obj.meta_cd_json = null; }
     window.__gjLastEventId = obj.event_id; window.__gjLast = obj; window.dataLayer.push(obj); return obj.event_id; }
   /* Meta-Ereignisname je Antwort (wie Perspective "Answer Clicked: ..."): nur ASCII, max. 50 Zeichen; der Volltext steht in meta_cd. */
   function ascii(s) { return String(s == null ? "" : s).replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").replace(/ß/g, "ss").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }
