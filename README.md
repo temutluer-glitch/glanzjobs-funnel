@@ -20,8 +20,8 @@ Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das vers
 
 ## Version 14.2 (2026-10-18): Erfolgsseite wie bei Candidate Flow
 
-- Wunsch Timur: Die drei naechsten Schritte stehen woertlich wie auf cf-jobs.com, unsere Optik bleibt (nummerierte Karten). Ueberschrift "Das hat geklappt! So geht's weiter" (ohne Gedankenstrich), Schritte: 1 "Du bekommst von uns eine Bestaetigung per E-Mail mit allen wichtigen Infos.", 2 "Wir melden uns direkt bei Dir fuer ein lockeres 10-minuetiges Kennenlerngespraech per Telefon.", 3 "Wenn wir beide ein gutes Gefuehl haben und zueinander passen, dann laden wir Dich gerne zu einem persoenlichen Gespraech ein." Die Texte stehen fest in der Webflow-Vorlage (Absaetze data-gj=step-item).
-- Der Absatz data-gj=success-text (CMS-Feld erfolgstext) steht jetzt UNTER den Schritten und enthaelt nur noch die Unterschrift "<Ansprechpartner> von der <Firmenname>". funnel.css gibt ihm Abstand und dunkle Schrift.
+- Wunsch Timur: Ueberschrift "Das hat geklappt! So geht's weiter" (ohne Gedankenstrich) und die drei naechsten Schritte woertlich wie auf cf-jobs.com: 1 "Du bekommst von uns eine Bestaetigung per E-Mail mit allen wichtigen Infos.", 2 "Wir melden uns direkt bei Dir fuer ein lockeres 10-minuetiges Kennenlerngespraech per Telefon.", 3 "Wenn wir beide ein gutes Gefuehl haben und zueinander passen, dann laden wir Dich gerne zu einem persoenlichen Gespraech ein." Die Texte stehen fest in der Webflow-Vorlage (Absaetze data-gj=step-item), kein Code.
+- Der Satz aus dem CMS-Feld erfolgstext ("<Ansprechpartner> meldet sich innerhalb von 48 Stunden ...") bleibt wie bisher zwischen Ueberschrift und Schritten. Eine Unterschrift unter den Schritten nach cf-jobs-Muster (Commit b040281) hat Timur abgelehnt; sie ist wieder entfernt, die Vorlage bleibt auf Commit e6ed26e gepinnt.
 
 ## Version 14 und 14.1 (2026-10-18): Scrollen, Logo-Neustart, Feldpruefung
 
