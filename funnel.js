@@ -5,10 +5,10 @@
    (data-scroll-top am Formular) und ueberschrieb dabei jedes Scrollen des Bewerbers (Ruckeln, kein Runterscrollen moeglich). Jetzt
    entfernt funnel.js das Attribut vor dem Start von Formly und scrollt selbst, nur wenn der Fragenkopf ausserhalb des Bildschirms liegt,
    nativ und durch den Bewerber unterbrechbar; laufende jQuery-Scrollanimationen stoppen bei Wischen, Mausrad oder Taste.
-   (b) Zurueck von der Absage-Seite fuehrt zur Absage-Frage statt zum Anfang: beim Klick auf die Absage-Antwort merkt sich funnel.js die
-   bisherigen Antworten in sessionStorage (nur dieser Tab, keine Kontaktdaten, 2 Stunden), beim Zurueck-Laden klickt es sie unsichtbar nach
-   (ohne Tracking-Meldungen) bis zur Absage-Frage. (c) Telefon und E-Mail werden vor dem Absenden geprueft (Format, deutsche Rufnummern-
-   bereiche, auslaendische Nummern mit +, bekannte Tippfehler-Domains mit Korrekturvorschlag); +Laendervorwahl bleibt jetzt erhalten.
+   (b) 14.1: Klick auf das Kundenlogo (oder den Firmennamen) startet den Funnel neu bei Frage 1. Der Rueckweg von der Absage-Seite zur
+   Absage-Frage aus 14.0 ist auf Wunsch von Timur wieder entfernt (Zurueck verhaelt sich wie in Version 13).
+   (c) Telefon und E-Mail werden vor dem Absenden geprueft (Format, deutsche Rufnummernbereiche, auslaendische Nummern mit +, bekannte
+   Tippfehler-Domains mit Korrekturvorschlag); kurze Meldungen ohne Beispiel (14.1); +Laendervorwahl bleibt jetzt erhalten.
    Version 12: Verzweigung. Endet ein Antworttext im CMS auf [>frage-id] (oder [>kontakt]), springt der Funnel dorthin. Nur dann schaltet
    funnel.js Formly in den Logikmodus (Karten data-answer, data-go-to, data-skip-to), zaehlt "Frage k" ohne Gesamtzahl, prueft Mehrfachauswahl
    (mindestens ein Haken), Telefon und Datenschutz selbst und sendet nur Antworten aus dem gegangenen Pfad. Stellen ohne Sprungziel: unveraendert.
@@ -35,7 +35,6 @@
             benefits: k("benefits"), zeitmodell: k("zeitmodell"), start: k("start"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
   window.__gjConfig = C;
   var page = document.querySelector('[data-gj="page"]');
-  var replaying = false; /* 14: true, solange nach der Rueckkehr von der Absage-Seite die alten Antworten nachgeklickt werden */
   /* 14: Formly liest data-scroll-top beim Start; ohne Attribut keine 1-Sekunden-jQuery-Animation pro Schritt. */
   var mform = document.getElementById("bewerbung-form") || document.querySelector('[data-form="multistep"]');
   if (mform) { mform.removeAttribute("data-scroll-top"); mform.removeAttribute("data-scroll-top-offset"); }
@@ -59,6 +58,15 @@
     logoEl.style.display = "none";
     var lt = document.createElement("span"); lt.setAttribute("data-gj", "logo-text"); lt.textContent = C.firma || "GlanzJobs"; logoEl.after(lt);
   }
+
+  /* 14.1: Klick auf Logo oder Firmennamen startet den Funnel neu bei Frage 1 (ohne Verlassen-Warnung, Werbeparameter bleiben in der Adresse). */
+  function restart(e) { if (e) e.preventDefault(); safe = true; location.href = location.pathname + location.search; }
+  [logoEl, q('[data-gj="logo-text"]')].forEach(function (el) {
+    if (!el) return;
+    el.style.cursor = "pointer"; el.setAttribute("role", "link"); el.setAttribute("tabindex", "0"); el.setAttribute("title", "Zum Anfang"); el.setAttribute("aria-label", "Zum Anfang der Bewerbung");
+    el.addEventListener("click", restart);
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") restart(e); });
+  });
 
   /* ---------- Fusszeile: Copyright, Impressum, Datenschutz ---------- */
   var legal = q('[data-gj="legal"]');
@@ -99,9 +107,9 @@
   }
 
   /* ---------- 14: Telefon und E-Mail vor dem Absenden pruefen ---------- */
-  var BAD_PHONE = "Bitte gib eine gültige Telefonnummer ein, z. B. 0171 2345678.";
+  var BAD_PHONE = "Bitte gib eine korrekte Telefonnummer an.";
   function phoneProblem(raw) {
-    var s = String(raw || "").trim(); if (!s) return "Bitte gib deine Telefonnummer ein.";
+    var s = String(raw || "").trim(); if (!s) return "Bitte gib deine Telefonnummer an.";
     if (/[a-z]/i.test(s)) return BAD_PHONE;
     var e = toE164(s).replace(/\D/g, "");
     if (e.length < 9 || e.length > 15) return BAD_PHONE;
@@ -143,8 +151,8 @@
     if (tel && tel.offsetParent !== null) { var pp = phoneProblem(tel.value); if (pp) { fieldMsg(tel, pp); bad = true; } else clearMsg(tel); }
     if (mail && mail.offsetParent !== null) {
       var v = String(mail.value || "").trim(); mail.value = v;
-      if (!v) { fieldMsg(mail, "Bitte gib deine E-Mail-Adresse ein."); bad = true; }
-      else if (/\s/.test(v) || /\.\.|^\.|\.@|@\./.test(v) || !EMAIL_RE.test(v)) { fieldMsg(mail, "Bitte gib eine gültige E-Mail-Adresse ein, z. B. max.mustermann@gmail.com."); bad = true; }
+      if (!v) { fieldMsg(mail, "Bitte gib deine E-Mail-Adresse an."); bad = true; }
+      else if (/\s/.test(v) || /\.\.|^\.|\.@|@\./.test(v) || !EMAIL_RE.test(v)) { fieldMsg(mail, "Bitte gib eine korrekte E-Mail-Adresse an."); bad = true; }
       else {
         var parts = v.split("@"), fix = TYPO[parts[1].toLowerCase()];
         if (fix && mailOk !== v) { mailOk = v; fieldMsg(mail, "Meintest du " + parts[0] + "@" + fix + "?", { label: "Ja, korrigieren", go: function () { mail.value = parts[0] + "@" + fix; } }); bad = true; }
@@ -300,13 +308,13 @@
   var allSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
   var total = Math.max(1, allSteps.length - 2);     /* Fragen = alle Schritte ohne die zwei Kontaktschritte */
   var contactSeen = false, done = false, lastIdx = null;
-  /* 14: nur scrollen, wenn der Fragenkopf oberhalb des Bildschirms liegt; nativ (vom Bewerber jederzeit unterbrechbar), beim Nachklicken sofort. */
+  /* 14: nur scrollen, wenn der Fragenkopf oberhalb des Bildschirms liegt; nativ und vom Bewerber jederzeit unterbrechbar. */
   function scrollToHead() {
     var anchor = q('[data-gj="counter"]') || mform; if (!anchor) return;
     var top = anchor.getBoundingClientRect().top; if (top >= 0) return;
     var y = Math.max(0, (window.pageYOffset || document.documentElement.scrollTop || 0) + top - 12);
     var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    try { window.scrollTo({ top: y, behavior: (reduce || replaying || -top > 2 * window.innerHeight) ? "auto" : "smooth" }); } catch (e) { window.scrollTo(0, y); }
+    try { window.scrollTo({ top: y, behavior: (reduce || -top > 2 * window.innerHeight) ? "auto" : "smooth" }); } catch (e) { window.scrollTo(0, y); }
   }
   function paint() {
     if (done) return;
@@ -410,8 +418,7 @@
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
   document.addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target && e.target.closest && e.target.closest('[data-gj="contact2"]')) prepareSubmit(); }, true);
-  function dl(obj) { if (replaying && /^(quiz_answer|gj_answer|quiz_ko|contact_start)$/.test(obj.event)) return null;
-    window.dataLayer = window.dataLayer || []; obj.event_id = uuid();
+  function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid();
     /* Felder, die nur fuer EINE Meldung gelten, in jeder Meldung ausdruecklich auf null setzen: der Tag Manager merkt sich Werte sonst
        bis zur naechsten Meldung, die sie ueberschreibt (Fehlerbild 17.10.: Lead hiess ploetzlich "Antwort: abwann = Ab sofort"). */
     ["meta_event", "meta_cd", "quiz_step", "answer"].forEach(function (k) { if (!(k in obj)) obj[k] = null; });
@@ -464,18 +471,6 @@
     var step = a.closest('[data-gj="step"]');
     var kq = step ? step.getAttribute("data-question-id") : "", ka = (a.textContent || "").trim();
     dl({ event: "quiz_ko", quiz_step: kq, answer: ka, meta_cd: { frage: kq, antwort: ka, schritt: step ? stepIndex(step) : 0, content_name: C.slug } });
-    /* 14: Antworten bis zur Absage-Frage merken (nur dieser Tab, ohne Kontaktdaten), damit Zurueck dort wieder landet */
-    try {
-      var saved = { slug: C.slug, ko: kq, ts: Date.now(), a: {} };
-      Array.prototype.forEach.call(document.querySelectorAll('[data-gj="step"][data-question-id]'), function (s) {
-        var id = s.getAttribute("data-question-id"); if (!id || id === kq) return;
-        var multi = s.querySelectorAll("input[data-gj-multi]:checked"), r = s.querySelector('input[type="radio"]:checked'), ta = s.querySelector("textarea");
-        if (multi.length) saved.a[id] = { m: Array.prototype.map.call(multi, function (i) { return i.value; }) };
-        else if (r) saved.a[id] = { r: r.value };
-        else if (ta && ta.value.trim()) saved.a[id] = { t: ta.value };
-      });
-      ss("gj_ko_return", JSON.stringify(saved));
-    } catch (x) {}
   }, true);
   var contactDone = false;
   document.addEventListener("focusin", function (e) {
@@ -490,39 +485,6 @@
     TH.forEach(function (t) { if (active >= t[0] && !fired[t[1]]) { fired[t[1]] = true; fire(t[1]); } }); raf = requestAnimationFrame(tick); }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { last = performance.now(); tick(); } else { cancelAnimationFrame(raf); last = null; } });
   if (document.visibilityState === "visible") { last = performance.now(); raf = requestAnimationFrame(tick); }
-
-  /* ---------- 14: Zurueck von der Absage-Seite fuehrt zur Absage-Frage ---------- */
-  (function koReturn() {
-    var raw = ss("gj_ko_return"); if (!raw) return;
-    var nav = (performance && performance.getEntriesByType && performance.getEntriesByType("navigation")[0]) || {};
-    var back = nav.type === "back_forward" || /\/absage/.test(document.referrer || "");
-    var saved = null; try { saved = JSON.parse(raw); } catch (e) {}
-    function clear() { try { sessionStorage.removeItem("gj_ko_return"); } catch (e) {} }
-    if (!back || !saved || saved.slug !== C.slug || Date.now() - (saved.ts || 0) > 7200000) { clear(); return; }
-    function visibleStep() { for (var i = 0; i < allSteps.length; i++) if (getComputedStyle(allSteps[i]).display !== "none") return allSteps[i]; return null; }
-    function finish() { replaying = false; clear(); }
-    function waitChange(prev, cb, n) { var v = visibleStep(); if (v && v !== prev) return cb(v); if ((n || 0) > 60) return cb(null); setTimeout(function () { waitChange(prev, cb, (n || 0) + 1); }, 50); }
-    function stepOnce() {
-      var s = visibleStep(); if (!s) return finish();
-      var id = s.getAttribute("data-question-id"), v = id && saved.a[id];
-      if (!id || id === saved.ko || !v) return finish();
-      if (v.r != null) {
-        var inp = Array.prototype.filter.call(s.querySelectorAll('input[type="radio"]'), function (i) { return i.value === v.r; })[0];
-        if (!inp) return finish(); inp.click();
-      } else if (v.m) {
-        Array.prototype.forEach.call(s.querySelectorAll("input[data-gj-multi]"), function (i) { if ((v.m.indexOf(i.value) >= 0) !== i.checked) i.click(); });
-        var nb = s.querySelector('[data-gj="next"]'); if (!nb) return finish(); nb.click();
-      } else if (v.t != null) {
-        var ta = s.querySelector("textarea"); if (!ta) return finish(); ta.value = v.t; ta.dispatchEvent(new Event("input", { bubbles: true }));
-        var nb2 = s.querySelector('[data-gj="next"]'); if (!nb2) return finish(); nb2.click();
-      } else return finish();
-      waitChange(s, function (nxt) { if (!nxt) return finish(); stepOnce(); });
-    }
-    function begin() { replaying = true; stepOnce(); }
-    /* Holt der Browser die Seite aus seinem Zwischenspeicher (bfcache), ist der alte Stand schon da: nur den Merkzettel loeschen. */
-    window.addEventListener("pageshow", function (ev) { if (ev.persisted) clear(); });
-    if (document.readyState === "complete") setTimeout(begin, 300); else window.addEventListener("load", function () { setTimeout(begin, 300); });
-  })();
 
   /* ---------- Verlassen-Warnung ---------- */
   var dirty = false, safe = false;
