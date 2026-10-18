@@ -1,6 +1,14 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 14 (2026-10-18): (a) Formly-Scrollanimation abgeschaltet: Formly scrollte bei jedem Schritt 1 s per jQuery nach oben
+   (data-scroll-top am Formular) und ueberschrieb dabei jedes Scrollen des Bewerbers (Ruckeln, kein Runterscrollen moeglich). Jetzt
+   entfernt funnel.js das Attribut vor dem Start von Formly und scrollt selbst, nur wenn der Fragenkopf ausserhalb des Bildschirms liegt,
+   nativ und durch den Bewerber unterbrechbar; laufende jQuery-Scrollanimationen stoppen bei Wischen, Mausrad oder Taste.
+   (b) Zurueck von der Absage-Seite fuehrt zur Absage-Frage statt zum Anfang: beim Klick auf die Absage-Antwort merkt sich funnel.js die
+   bisherigen Antworten in sessionStorage (nur dieser Tab, keine Kontaktdaten, 2 Stunden), beim Zurueck-Laden klickt es sie unsichtbar nach
+   (ohne Tracking-Meldungen) bis zur Absage-Frage. (c) Telefon und E-Mail werden vor dem Absenden geprueft (Format, deutsche Rufnummern-
+   bereiche, auslaendische Nummern mit +, bekannte Tippfehler-Domains mit Korrekturvorschlag); +Laendervorwahl bleibt jetzt erhalten.
    Version 12: Verzweigung. Endet ein Antworttext im CMS auf [>frage-id] (oder [>kontakt]), springt der Funnel dorthin. Nur dann schaltet
    funnel.js Formly in den Logikmodus (Karten data-answer, data-go-to, data-skip-to), zaehlt "Frage k" ohne Gesamtzahl, prueft Mehrfachauswahl
    (mindestens ein Haken), Telefon und Datenschutz selbst und sendet nur Antworten aus dem gegangenen Pfad. Stellen ohne Sprungziel: unveraendert.
@@ -27,6 +35,12 @@
             benefits: k("benefits"), zeitmodell: k("zeitmodell"), start: k("start"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
   window.__gjConfig = C;
   var page = document.querySelector('[data-gj="page"]');
+  var replaying = false; /* 14: true, solange nach der Rueckkehr von der Absage-Seite die alten Antworten nachgeklickt werden */
+  /* 14: Formly liest data-scroll-top beim Start; ohne Attribut keine 1-Sekunden-jQuery-Animation pro Schritt. */
+  var mform = document.getElementById("bewerbung-form") || document.querySelector('[data-form="multistep"]');
+  if (mform) { mform.removeAttribute("data-scroll-top"); mform.removeAttribute("data-scroll-top-offset"); }
+  function stopAutoScroll() { try { if (window.jQuery) window.jQuery("html, body").stop(true, false); } catch (e) {} }
+  ["wheel", "touchstart", "keydown"].forEach(function (ev) { window.addEventListener(ev, stopAutoScroll, { passive: true, capture: true }); });
   function q(sel, root) { return (root || document).querySelector(sel); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function safeUrl(u) { return /^https?:\/\//i.test(u) ? u : ""; }
@@ -75,13 +89,73 @@
   }
   if (fName) { fName.addEventListener("input", splitName); fName.addEventListener("change", splitName); }
   function toE164(raw) {
-    var d = String(raw || "").replace(/\D/g, "");
+    var s = String(raw || "").trim(), d = s.replace(/\D/g, "");
     if (!d) return raw;
-    if (d.indexOf("00") === 0) d = d.slice(2);
-    else if (d.indexOf("0") === 0) d = "49" + d.slice(1);
-    else if (d.indexOf("49") !== 0 || d.length < 10) d = "49" + d;
-    return "+" + d;
+    if (s.charAt(0) === "+") return "+" + d;                 /* 14: auslaendische Nummer mit +, Vorwahl behalten */
+    if (d.indexOf("00") === 0) return "+" + d.slice(2);
+    if (d.indexOf("0") === 0) return "+49" + d.slice(1);
+    if (d.indexOf("49") === 0 && d.length >= 11) return "+" + d;
+    return "+49" + d;
   }
+
+  /* ---------- 14: Telefon und E-Mail vor dem Absenden pruefen ---------- */
+  var BAD_PHONE = "Bitte gib eine gültige Telefonnummer ein, z. B. 0171 2345678.";
+  function phoneProblem(raw) {
+    var s = String(raw || "").trim(); if (!s) return "Bitte gib deine Telefonnummer ein.";
+    if (/[a-z]/i.test(s)) return BAD_PHONE;
+    var e = toE164(s).replace(/\D/g, "");
+    if (e.length < 9 || e.length > 15) return BAD_PHONE;
+    if (e.indexOf("49") === 0) {
+      var n = e.slice(2);
+      if (n.length < 7 || n.length > 12 || n.charAt(0) === "0") return BAD_PHONE;
+      if (/^(\d)\1{5,}$/.test(n) || /^1234567/.test(n)) return BAD_PHONE;
+      if (n.charAt(0) === "1" && !/^1[5-7]\d{8,9}$/.test(n)) return BAD_PHONE;   /* 01 nur als Handy 015/016/017 */
+      if (/^(900|180|137|138|118|700|800)/.test(n)) return BAD_PHONE;            /* Service- und Sondernummern */
+    } else if (/^(\d)\1{6,}$/.test(e)) return BAD_PHONE;
+    return "";
+  }
+  var EMAIL_RE = /^[a-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,24}$/i;
+  var TYPO = { "gmial.com": "gmail.com", "gmal.com": "gmail.com", "gmai.com": "gmail.com", "gamil.com": "gmail.com", "gnail.com": "gmail.com",
+    "gmaill.com": "gmail.com", "gmail.co": "gmail.com", "gmail.con": "gmail.com", "gmail.cm": "gmail.com", "gmail.om": "gmail.com", "gmail.de": "gmail.com",
+    "hotmial.com": "hotmail.com", "hotmai.com": "hotmail.com", "hotmail.con": "hotmail.com", "outlok.com": "outlook.com", "outlook.con": "outlook.com",
+    "outlok.de": "outlook.de", "yahoo.con": "yahoo.com", "yaho.de": "yahoo.de", "icloud.con": "icloud.com", "iclod.com": "icloud.com",
+    "web.dee": "web.de", "wed.de": "web.de", "gmx.dee": "gmx.de", "gmx.ne": "gmx.net", "gmx.nt": "gmx.net", "t-onlin.de": "t-online.de",
+    "tonline.de": "t-online.de", "freenet.dee": "freenet.de" };
+  function clearMsg(input) {
+    var wrap = input.closest(".fn-field") || input; wrap.style.borderColor = "";
+    var n = wrap.nextElementSibling; if (n && n.getAttribute("data-gj") === "feld-fehler") n.remove(); input.removeAttribute("aria-invalid");
+  }
+  function fieldMsg(input, text, link) {
+    clearMsg(input); var wrap = input.closest(".fn-field") || input; wrap.style.borderColor = "#b42318";
+    var m = document.createElement("p"); m.setAttribute("data-gj", "feld-fehler"); m.setAttribute("role", "alert"); m.className = "fn-hint";
+    m.style.cssText = "color:#b42318;margin:-6px 0 12px;font-size:14px;line-height:1.4"; m.textContent = text;
+    if (link) { var a = document.createElement("a"); a.href = "#"; a.textContent = link.label; a.style.cssText = "color:inherit;text-decoration:underline;margin-left:6px;font-weight:600";
+      a.addEventListener("click", function (ev) { ev.preventDefault(); link.go(); clearMsg(input); }); m.appendChild(a); }
+    wrap.after(m); input.setAttribute("aria-invalid", "true");
+  }
+  var mailOk = ""; /* Adresse, die der Bewerber trotz Tippfehler-Hinweis bestaetigt hat (zweites Absenden ohne Aenderung) */
+  function contactGuard(e) {
+    var t;
+    if (e.type === "keydown") { if (e.key !== "Enter") return; t = e.target && e.target.closest && e.target.closest('[data-gj="contact2"]'); }
+    else t = e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]');
+    if (!t) return;
+    var tel = document.getElementById("f-telefon"), mail = document.getElementById("f-email"), bad = false;
+    if (tel && tel.offsetParent !== null) { var pp = phoneProblem(tel.value); if (pp) { fieldMsg(tel, pp); bad = true; } else clearMsg(tel); }
+    if (mail && mail.offsetParent !== null) {
+      var v = String(mail.value || "").trim(); mail.value = v;
+      if (!v) { fieldMsg(mail, "Bitte gib deine E-Mail-Adresse ein."); bad = true; }
+      else if (/\s/.test(v) || /\.\.|^\.|\.@|@\./.test(v) || !EMAIL_RE.test(v)) { fieldMsg(mail, "Bitte gib eine gültige E-Mail-Adresse ein, z. B. max.mustermann@gmail.com."); bad = true; }
+      else {
+        var parts = v.split("@"), fix = TYPO[parts[1].toLowerCase()];
+        if (fix && mailOk !== v) { mailOk = v; fieldMsg(mail, "Meintest du " + parts[0] + "@" + fix + "?", { label: "Ja, korrigieren", go: function () { mail.value = parts[0] + "@" + fix; } }); bad = true; }
+        else clearMsg(mail);
+      }
+    }
+    if (bad) { e.preventDefault(); e.stopImmediatePropagation(); var first = document.querySelector('[aria-invalid="true"]'); if (first) { try { first.focus(); } catch (x) {} } }
+  }
+  document.addEventListener("click", contactGuard, true);
+  document.addEventListener("keydown", contactGuard, true);
+  ["f-telefon", "f-email"].forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener("input", function () { clearMsg(el); }); });
 
   /* ---------- Fragen-Schritte aus der Collection-Liste vorbereiten (vor Formly) ---------- */
   var steps = document.querySelectorAll('[data-gj="steps"] [data-gj="step"]');
@@ -225,12 +299,22 @@
   document.querySelectorAll("[data-text]").forEach(function (el) { el.removeAttribute("data-text"); });
   var allSteps = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
   var total = Math.max(1, allSteps.length - 2);     /* Fragen = alle Schritte ohne die zwei Kontaktschritte */
-  var contactSeen = false, done = false;
+  var contactSeen = false, done = false, lastIdx = null;
+  /* 14: nur scrollen, wenn der Fragenkopf oberhalb des Bildschirms liegt; nativ (vom Bewerber jederzeit unterbrechbar), beim Nachklicken sofort. */
+  function scrollToHead() {
+    var anchor = q('[data-gj="counter"]') || mform; if (!anchor) return;
+    var top = anchor.getBoundingClientRect().top; if (top >= 0) return;
+    var y = Math.max(0, (window.pageYOffset || document.documentElement.scrollTop || 0) + top - 12);
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try { window.scrollTo({ top: y, behavior: (reduce || replaying || -top > 2 * window.innerHeight) ? "auto" : "smooth" }); } catch (e) { window.scrollTo(0, y); }
+  }
   function paint() {
     if (done) return;
     var idx = -1;
     allSteps.forEach(function (s, i) { if (idx < 0 && getComputedStyle(s).display !== "none") idx = i; });
     if (idx < 0) idx = 0;
+    if (lastIdx !== null && idx !== lastIdx) scrollToHead();   /* 14: eigenes, unterbrechbares Scrollen statt Formly-Animation */
+    lastIdx = idx;
     if (branching) {
       /* Pfad mitschreiben (zurueck = Pfad kuerzen), Zaehler = Position im Pfad von voraussichtlicher Pfadlaenge */
       var pos = visited.indexOf(idx); if (pos >= 0) visited = visited.slice(0, pos + 1); else visited.push(idx);
@@ -326,7 +410,8 @@
   document.addEventListener("submit", prepareSubmit, true);
   document.addEventListener("click", function (e) { if (e.target && e.target.closest && e.target.closest('[data-form="submit-btn"], [type="submit"]')) prepareSubmit(); }, true);
   document.addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target && e.target.closest && e.target.closest('[data-gj="contact2"]')) prepareSubmit(); }, true);
-  function dl(obj) { window.dataLayer = window.dataLayer || []; obj.event_id = uuid();
+  function dl(obj) { if (replaying && /^(quiz_answer|gj_answer|quiz_ko|contact_start)$/.test(obj.event)) return null;
+    window.dataLayer = window.dataLayer || []; obj.event_id = uuid();
     /* Felder, die nur fuer EINE Meldung gelten, in jeder Meldung ausdruecklich auf null setzen: der Tag Manager merkt sich Werte sonst
        bis zur naechsten Meldung, die sie ueberschreibt (Fehlerbild 17.10.: Lead hiess ploetzlich "Antwort: abwann = Ab sofort"). */
     ["meta_event", "meta_cd", "quiz_step", "answer"].forEach(function (k) { if (!(k in obj)) obj[k] = null; });
@@ -379,6 +464,18 @@
     var step = a.closest('[data-gj="step"]');
     var kq = step ? step.getAttribute("data-question-id") : "", ka = (a.textContent || "").trim();
     dl({ event: "quiz_ko", quiz_step: kq, answer: ka, meta_cd: { frage: kq, antwort: ka, schritt: step ? stepIndex(step) : 0, content_name: C.slug } });
+    /* 14: Antworten bis zur Absage-Frage merken (nur dieser Tab, ohne Kontaktdaten), damit Zurueck dort wieder landet */
+    try {
+      var saved = { slug: C.slug, ko: kq, ts: Date.now(), a: {} };
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gj="step"][data-question-id]'), function (s) {
+        var id = s.getAttribute("data-question-id"); if (!id || id === kq) return;
+        var multi = s.querySelectorAll("input[data-gj-multi]:checked"), r = s.querySelector('input[type="radio"]:checked'), ta = s.querySelector("textarea");
+        if (multi.length) saved.a[id] = { m: Array.prototype.map.call(multi, function (i) { return i.value; }) };
+        else if (r) saved.a[id] = { r: r.value };
+        else if (ta && ta.value.trim()) saved.a[id] = { t: ta.value };
+      });
+      ss("gj_ko_return", JSON.stringify(saved));
+    } catch (x) {}
   }, true);
   var contactDone = false;
   document.addEventListener("focusin", function (e) {
@@ -393,6 +490,39 @@
     TH.forEach(function (t) { if (active >= t[0] && !fired[t[1]]) { fired[t[1]] = true; fire(t[1]); } }); raf = requestAnimationFrame(tick); }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") { last = performance.now(); tick(); } else { cancelAnimationFrame(raf); last = null; } });
   if (document.visibilityState === "visible") { last = performance.now(); raf = requestAnimationFrame(tick); }
+
+  /* ---------- 14: Zurueck von der Absage-Seite fuehrt zur Absage-Frage ---------- */
+  (function koReturn() {
+    var raw = ss("gj_ko_return"); if (!raw) return;
+    var nav = (performance && performance.getEntriesByType && performance.getEntriesByType("navigation")[0]) || {};
+    var back = nav.type === "back_forward" || /\/absage/.test(document.referrer || "");
+    var saved = null; try { saved = JSON.parse(raw); } catch (e) {}
+    function clear() { try { sessionStorage.removeItem("gj_ko_return"); } catch (e) {} }
+    if (!back || !saved || saved.slug !== C.slug || Date.now() - (saved.ts || 0) > 7200000) { clear(); return; }
+    function visibleStep() { for (var i = 0; i < allSteps.length; i++) if (getComputedStyle(allSteps[i]).display !== "none") return allSteps[i]; return null; }
+    function finish() { replaying = false; clear(); }
+    function waitChange(prev, cb, n) { var v = visibleStep(); if (v && v !== prev) return cb(v); if ((n || 0) > 60) return cb(null); setTimeout(function () { waitChange(prev, cb, (n || 0) + 1); }, 50); }
+    function stepOnce() {
+      var s = visibleStep(); if (!s) return finish();
+      var id = s.getAttribute("data-question-id"), v = id && saved.a[id];
+      if (!id || id === saved.ko || !v) return finish();
+      if (v.r != null) {
+        var inp = Array.prototype.filter.call(s.querySelectorAll('input[type="radio"]'), function (i) { return i.value === v.r; })[0];
+        if (!inp) return finish(); inp.click();
+      } else if (v.m) {
+        Array.prototype.forEach.call(s.querySelectorAll("input[data-gj-multi]"), function (i) { if ((v.m.indexOf(i.value) >= 0) !== i.checked) i.click(); });
+        var nb = s.querySelector('[data-gj="next"]'); if (!nb) return finish(); nb.click();
+      } else if (v.t != null) {
+        var ta = s.querySelector("textarea"); if (!ta) return finish(); ta.value = v.t; ta.dispatchEvent(new Event("input", { bubbles: true }));
+        var nb2 = s.querySelector('[data-gj="next"]'); if (!nb2) return finish(); nb2.click();
+      } else return finish();
+      waitChange(s, function (nxt) { if (!nxt) return finish(); stepOnce(); });
+    }
+    function begin() { replaying = true; stepOnce(); }
+    /* Holt der Browser die Seite aus seinem Zwischenspeicher (bfcache), ist der alte Stand schon da: nur den Merkzettel loeschen. */
+    window.addEventListener("pageshow", function (ev) { if (ev.persisted) clear(); });
+    if (document.readyState === "complete") setTimeout(begin, 300); else window.addEventListener("load", function () { setTimeout(begin, 300); });
+  })();
 
   /* ---------- Verlassen-Warnung ---------- */
   var dirty = false, safe = false;
