@@ -113,6 +113,8 @@ section[data-gj=page]{display:block;min-height:100vh;padding:0 0 44px}
 [data-gj=page] [data-gj=steps-list]{counter-reset:gj;display:grid;gap:12px;margin:26px 0 0;text-align:left}
 [data-gj=page] [data-gj=step-item]{counter-increment:gj;display:flex;gap:12px;align-items:flex-start;margin:0;padding:12px 14px;background:#fff;border:1px solid var(--gj-line);border-radius:10px;font-size:15px;line-height:1.45;color:var(--gj-fg)}
 [data-gj=page] [data-gj=step-item]::before{content:counter(gj);flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--gj);color:#fff;font-size:14px;font-weight:700}
+/* 14.2: Unterschrift wie bei cf-jobs ("Matthias von der Edeka Mader") unter den drei Schritten; der Text kommt aus dem CMS-Feld erfolgstext */
+[data-gj=page] [data-gj=steps-list]+[data-gj=success-text]{margin:24px 0 0;color:var(--gj-fg)}
 [data-gj=page][data-gj-state=done] [data-gj=claim],[data-gj=page][data-gj-state=done] [data-gj=counter]{display:none}
 [data-gj=page] .w-form-fail{margin-top:12px;padding:12px 14px;border-radius:10px;background:#fdecea;color:#7f1d1d}
 [data-gj=page] .w-form-fail .fn-hint{margin:0;color:inherit;font-size:15px;text-align:left}
