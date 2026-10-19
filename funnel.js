@@ -1,6 +1,8 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 14.3 (2026-10-19): Schriftfarbe auf Knoepfen in Kundenfarbe automatisch weiss oder fast schwarz (Kontrast), zu helle Kundenfarbe
+   fuer Text auf Weiss abgedunkelt (--gj-on, --gj-text, --gj-check-on in funnel.css). Anlass: K&S Hausmeisterteam mit Gelb #FCCC0C.
    Version 14 (2026-10-18): (a) Formly-Scrollanimation abgeschaltet: Formly scrollte bei jedem Schritt 1 s per jQuery nach oben
    (data-scroll-top am Formular) und ueberschrieb dabei jedes Scrollen des Bewerbers (Ruckeln, kein Runterscrollen moeglich). Jetzt
    entfernt funnel.js das Attribut vor dem Start von Formly und scrollt selbst, nur wenn der Fragenkopf ausserhalb des Bildschirms liegt,
@@ -50,7 +52,23 @@
 
   /* ---------- Kundenfarbe (alles Weitere steht in funnel.css) ---------- */
   var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#335e7b";
-  document.documentElement.style.setProperty("--gj", color);
+  var rootStyle = document.documentElement.style;
+  rootStyle.setProperty("--gj", color);
+  /* Version 14.3: Schriftfarbe passend zur Kundenfarbe (Kontrast nach WCAG). Auf Knoepfen in Kundenfarbe steht weisse Schrift,
+     solange sie ausreichend lesbar ist (Kontrast mindestens 3, oder besser als dunkle Schrift), sonst fast schwarze (z. B. bei Gelb).
+     Fuer Text auf weissem Grund (Zaehler, Unterzeile) wird eine zu helle Kundenfarbe abgedunkelt, bis der Kontrast 4,5 erreicht (--gj-text). */
+  function luminance(hex) {
+    var ch = [1, 3, 5].map(function (i) { var c = parseInt(hex.substr(i, 2), 16) / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  }
+  function contrast(a, b) { var x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  function darken(hex, f) { return "#" + [1, 3, 5].map(function (i) { return ("0" + Math.round(parseInt(hex.substr(i, 2), 16) * f).toString(16)).slice(-2); }).join(""); }
+  var GJ_DARK = "#111827", cWhite = contrast(color, "#ffffff"), useWhite = cWhite >= 3 || cWhite >= contrast(color, GJ_DARK);
+  rootStyle.setProperty("--gj-on", useWhite ? "#fff" : GJ_DARK);
+  rootStyle.setProperty("--gj-check-on", useWhite ? "var(--gj-check)" : "var(--gj-check-dark)");
+  var textColor = color;
+  for (var di = 0; di < 30 && contrast(textColor, "#ffffff") < 4.5; di++) textColor = darken(textColor, 0.9);
+  rootStyle.setProperty("--gj-text", textColor);
 
   /* ---------- Kopf: ohne Kundenlogo steht der Firmenname als Text ---------- */
   var logoEl = q('[data-gj="logo"]');
