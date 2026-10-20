@@ -4,6 +4,8 @@
    Version 14.4 (2026-10-20): Zaehler bei Verzweigung "Frage k von n", n = beantwortete plus laengster moeglicher Rest. n waechst nie,
    ueberspringt eine Antwort Fragen, wird n kleiner (Wunsch Timur, aktiv-plus Arnsberg, auch ALBO). Springen alle Einfach-Antworten einer
    Frage, zaehlt der direkt folgende Schritt nicht als moeglicher Weg. Formular, Antworten und lead_json unveraendert.
+   Version 14.5 (2026-10-20): mehrere Absage-Antworten je Frage. Antworttext im CMS mit Endung [>absage] wird ein weiterer Absage-Knopf
+   (vor dem KO-Knopf aus dem Feld ko-antwort, gleiches Aussehen, gleiches quiz_ko-Ereignis). Anlass: Octeo KA-206.
    Version 14.3 (2026-10-19): Schriftfarbe auf Knoepfen in Kundenfarbe weiss, nur bei sehr hellen Farben (Kontrast unter 2,5) fast schwarz,
    dann auch Text auf Weiss abgedunkelt (--gj-on, --gj-text, --gj-check-on in funnel.css). Anlass: K&S Hausmeisterteam mit Gelb #FCCC0C.
    Version 14 (2026-10-18): (a) Formly-Scrollanimation abgeschaltet: Formly scrollte bei jedem Schritt 1 s per jQuery nach oben
@@ -187,6 +189,7 @@
   ["f-telefon", "f-email"].forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener("input", function () { clearMsg(el); }); });
 
   /* ---------- Fragen-Schritte aus der Collection-Liste vorbereiten (vor Formly) ---------- */
+  var KO_MARK = /\s*\[>\s*absage\s*\]\s*$/i;
   var steps = document.querySelectorAll('[data-gj="steps"] [data-gj="step"]');
   var usedIds = {}, seenAnswer = false;
   steps.forEach(function (step, si) {
@@ -211,12 +214,15 @@
       multi = false;
     }
     var wrappers = step.querySelectorAll('[data-gj^="a"].w-radio, [data-gj^="a"].w-checkbox');
-    var n = 0;
+    var n = 0, koExtra = [];
     wrappers.forEach(function (w) {
       var input = w.querySelector("input"), label = w.querySelector(".w-form-label");
       fillEl(label);
       var text = label ? label.textContent.trim() : "";
       if (!text) { w.remove(); return; }
+      /* 14.5: weitere Absage-Antworten. Endet ein Antworttext im CMS auf [>absage], wird daraus ein zusaetzlicher Absage-Knopf
+         (wie die KO-Antwort), in CMS-Reihenfolge vor dem KO-Knopf. Das Kuerzel wird nie angezeigt oder gesendet. */
+      if (KO_MARK.test(text)) { koExtra.push(text.replace(KO_MARK, "")); w.remove(); return; }
       n++;
       input.name = qid; input.value = text; input.id = qid + "_" + n;
       input.setAttribute("data-name", qid);
@@ -231,6 +237,16 @@
       });
     }
     var ko = step.querySelector('[data-gj="ko"]');
+    if (koExtra.length) {
+      var koHost = ko ? ko.parentNode : answers, koBase = ko;
+      if (!koBase) { koBase = document.createElement("a"); koBase.setAttribute("data-gj", "ko"); koBase.href = "/absage"; koBase.className = "fn-btn fn-btn-exit w-inline-block"; koBase.innerHTML = '<div data-gj="ko-text"></div>'; }
+      koExtra.forEach(function (t) {
+        var c = koBase.cloneNode(true), ct = c.querySelector('[data-gj="ko-text"]');
+        if (ct) ct.textContent = t; else c.textContent = t;
+        c.setAttribute("data-answer-id", "ko");
+        if (ko) ko.before(c); else if (koHost) koHost.appendChild(c);
+      });
+    }
     if (ko) { var kt = ko.querySelector('[data-gj="ko-text"]'); fillEl(kt); if (!kt || !kt.textContent.trim()) ko.remove(); else ko.setAttribute("data-answer-id", "ko"); }
     if (multi && answers) {
       answers.removeAttribute("data-radio-skip");

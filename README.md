@@ -24,6 +24,15 @@ Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das vers
 - Springen alle Einfach-Antworten einer Frage (z. B. Teamleitung, Maschine), zaehlt der direkt folgende Schritt nicht als moeglicher Weg; sonst waere n zu hoch.
 - Stellen ohne Sprungziel unveraendert ("Frage k von N" wie bisher). Formular-HTML nach dem Start bei aktiv-plus, ALBO und Celten Dassel mit 14.3 verglichen: identisch. Getestet an lokalen Kopien: fuenf Wege aktiv-plus, zwei Wege ALBO.
 
+## Version 14.5 (2026-10-20): mehrere Absage-Antworten je Frage
+
+- Endet ein Antworttext in der Fragenbank (antwort-1 bis antwort-5) auf `[>absage]`, wird daraus ein weiterer Absage-Knopf, z. B. `Weniger als 10 [>absage]`. Er sieht aus wie der KO-Knopf aus dem Feld ko-antwort, steht in CMS-Reihenfolge davor, fuehrt zur Absage-Seite und loest dasselbe quiz_ko-Ereignis aus. Das Kuerzel wird nie angezeigt oder gesendet und schaltet die Verzweigung nicht ein.
+- Anlass: Octeo KA-206 (Fuehrungserfahrung: "Weniger als 10" und "Bisher keine", Deutsch: "Mittel" und "Schlecht").
+
+## Version 14.3 (2026-10-19): Schriftfarbe
+
+- Weiss bleibt Standard; nur bei sehr hellen Kundenfarben (Kontrast von Weiss unter 2,5, z. B. Gelb) fast schwarze Schrift auf Knoepfen und abgedunkelte Farbe fuer Text auf Weiss (--gj-on, --gj-text, --gj-check-on).
+
 ## Version 14.2 (2026-10-18): Erfolgsseite wie bei Candidate Flow
 
 - Wunsch Timur: Ueberschrift "Das hat geklappt! So geht's weiter" (ohne Gedankenstrich) und die drei naechsten Schritte woertlich wie auf cf-jobs.com: 1 "Du bekommst von uns eine Bestaetigung per E-Mail mit allen wichtigen Infos.", 2 "Wir melden uns direkt bei Dir fuer ein lockeres 10-minuetiges Kennenlerngespraech per Telefon.", 3 "Wenn wir beide ein gutes Gefuehl haben und zueinander passen, dann laden wir Dich gerne zu einem persoenlichen Gespraech ein." Die Texte stehen fest in der Webflow-Vorlage (Absaetze data-gj=step-item), kein Code.
