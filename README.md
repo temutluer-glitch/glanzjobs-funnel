@@ -18,6 +18,12 @@ Beide Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). N
 
 Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das versteckte Feld `lead_json`. Darin stehen: die Antworten des Bewerbers (Schluessel = Frage-ID aus der Fragenbank, Mehrfachauswahl als "A; B"), Kontaktdaten `vorname`, `nachname`, `telefon` (+49-Format), `email`, `plz_ort`, `datenschutz` (true/false) sowie die Werbe- und Technikfelder fuer die Zuordnung in LeadTable (utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id, campaign_name, adset_name, ad_name, placement, site_source_name, gclid, ttclid, msclkid, fbclid, fbp, fbc, external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel; nur wenn gefuellt). NICHT dabei: `name` (doppelt zu vorname/nachname), `stelle`, `kunde`, `stellenbezeichnung`, `ort` (Einsatzort der Stelle), `pixel_id`, `ziel_webhook`. Diese bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make-Szenario 7876191 sendet im HTTP-Modul `lead_json` unveraendert an den Ziel-Webhook der Stelle (Fallback auf das volle Formular nur, wenn lead_json fehlt).
 
+## Version 14.4 (2026-10-20): Zaehler mit Gesamtzahl bei Verzweigung
+
+- Wunsch Timur (aktiv-plus Arnsberg): statt "Frage 1" steht "Frage 1 von 13". n = bisher beantwortete Fragen plus laengster moeglicher Rest bis zum Kontaktschritt. Da Spruenge nur nach vorne gehen, waechst n nie; ueberspringt eine Antwort Fragen, wird n kleiner (Beispiel kurzer Weg aktiv-plus: 1 von 13, 2 von 13, 3 von 7 ... 6 von 7). Balken = k von n plus zwei Kontaktschritte.
+- Springen alle Einfach-Antworten einer Frage (z. B. Teamleitung, Maschine), zaehlt der direkt folgende Schritt nicht als moeglicher Weg; sonst waere n zu hoch.
+- Stellen ohne Sprungziel unveraendert ("Frage k von N" wie bisher). Formular-HTML nach dem Start bei aktiv-plus, ALBO und Celten Dassel mit 14.3 verglichen: identisch. Getestet an lokalen Kopien: fuenf Wege aktiv-plus, zwei Wege ALBO.
+
 ## Version 14.2 (2026-10-18): Erfolgsseite wie bei Candidate Flow
 
 - Wunsch Timur: Ueberschrift "Das hat geklappt! So geht's weiter" (ohne Gedankenstrich) und die drei naechsten Schritte woertlich wie auf cf-jobs.com: 1 "Du bekommst von uns eine Bestaetigung per E-Mail mit allen wichtigen Infos.", 2 "Wir melden uns direkt bei Dir fuer ein lockeres 10-minuetiges Kennenlerngespraech per Telefon.", 3 "Wenn wir beide ein gutes Gefuehl haben und zueinander passen, dann laden wir Dich gerne zu einem persoenlichen Gespraech ein." Die Texte stehen fest in der Webflow-Vorlage (Absaetze data-gj=step-item), kein Code.
@@ -58,6 +64,6 @@ Technik: Nur wenn mindestens eine Antwort ein Kuerzel traegt, schaltet funnel.js
 legt um jeden Schritt eine Karte `data-answer=<Schluessel>` mit `data-go-to=<naechster Schluessel>`, setzt an springende Antworten
 `data-go-to` und `data-skip-to` (Schrittnummer, 1-basiert) und entfernt `data-form="next-btn"` von den Radio-Knoepfen (Weiterschalten
 ueber `data-radio-skip`). Weil Formly im Logikmodus die Browser-Pflichtpruefung abschaltet, prueft funnel.js selbst: Mehrfachauswahl
-mindestens ein Haken, Pflichtfelder der Kontaktschritte, Datenschutz-Haken. Zaehler zeigt "Frage k" (Gesamtzahl haengt vom Pfad ab).
+mindestens ein Haken, Pflichtfelder der Kontaktschritte, Datenschutz-Haken. Zaehler zeigt seit 14.4 "Frage k von n" (n = laengster moeglicher Rest, wird nur kleiner).
 Beim Absenden werden Antworten aus nicht besuchten Schritten geleert. Kampagnen ohne Kuerzel laufen exakt wie in Version 11
 (Vergleichstest Mr. Service und GlanzJobs-Test: gleicher Pfad, gleiches lead_json).

@@ -1,6 +1,9 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 14.4 (2026-10-20): Zaehler bei Verzweigung "Frage k von n", n = beantwortete plus laengster moeglicher Rest. n waechst nie,
+   ueberspringt eine Antwort Fragen, wird n kleiner (Wunsch Timur, aktiv-plus Arnsberg, auch ALBO). Springen alle Einfach-Antworten einer
+   Frage, zaehlt der direkt folgende Schritt nicht als moeglicher Weg. Formular, Antworten und lead_json unveraendert.
    Version 14.3 (2026-10-19): Schriftfarbe auf Knoepfen in Kundenfarbe weiss, nur bei sehr hellen Farben (Kontrast unter 2,5) fast schwarz,
    dann auch Text auf Weiss abgedunkelt (--gj-on, --gj-text, --gj-check-on in funnel.css). Anlass: K&S Hausmeisterteam mit Gelb #FCCC0C.
    Version 14 (2026-10-18): (a) Formly-Scrollanimation abgeschaltet: Formly scrollte bei jedem Schritt 1 s per jQuery nach oben
@@ -12,7 +15,7 @@
    (c) Telefon und E-Mail werden vor dem Absenden geprueft (Format, deutsche Rufnummernbereiche, auslaendische Nummern mit +, bekannte
    Tippfehler-Domains mit Korrekturvorschlag); kurze Meldungen ohne Beispiel (14.1); +Laendervorwahl bleibt jetzt erhalten.
    Version 12: Verzweigung. Endet ein Antworttext im CMS auf [>frage-id] (oder [>kontakt]), springt der Funnel dorthin. Nur dann schaltet
-   funnel.js Formly in den Logikmodus (Karten data-answer, data-go-to, data-skip-to), zaehlt "Frage k" ohne Gesamtzahl, prueft Mehrfachauswahl
+   funnel.js Formly in den Logikmodus (Karten data-answer, data-go-to, data-skip-to), zaehlt "Frage k" (seit 14.4 "von n"), prueft Mehrfachauswahl
    (mindestens ein Haken), Telefon und Datenschutz selbst und sendet nur Antworten aus dem gegangenen Pfad. Stellen ohne Sprungziel: unveraendert.
    Version 11: lead_json enthaelt zusaetzlich die Werbe- und Technikfelder (utm_*, campaign_name, adset_name, ad_name, fbclid, fbp, fbc,
    external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel), weil LeadTable sie je Kampagne zuordnet.
@@ -270,8 +273,10 @@
       while (s.firstChild) card.appendChild(s.firstChild);
       s.appendChild(card);
       if (nextKey) edges[i][i + 1] = 1;
+      var radios = 0, plain = 0;   /* 14.4: springen alle Einfach-Antworten, ist der naechste Schritt kein moeglicher Weg (Zaehler) */
       s.querySelectorAll("label").forEach(function (lab) {
         var inp = lab.querySelector("input"), span = lab.querySelector(".w-form-label"); if (!inp) return;
+        if (inp.type === "radio") { radios++; if (!JUMP.test(inp.value || "")) plain++; }
         /* Im Logikmodus darf der Radio-Knopf nicht selbst "Weiter" ausloesen, sonst springt Formly vor dem Merken der Auswahl.
            Das Weiterschalten uebernimmt data-radio-skip auf dem Antwortblock. */
         if (inp.type === "radio" && inp.getAttribute("data-form") === "next-btn") inp.removeAttribute("data-form");
@@ -279,11 +284,13 @@
         var target = m[1].toLowerCase(), clean = inp.value.replace(JUMP, "");
         inp.value = clean; if (span) span.textContent = span.textContent.replace(JUMP, "");
         var ti = keyIndex[target];
-        if (ti == null || ti <= i) { if (window.console) console.warn("[gj] Sprungziel ungueltig oder rueckwaerts:", target, "in", stepKey[i]); return; }
+        if (ti == null || ti <= i) { plain++; if (window.console) console.warn("[gj] Sprungziel ungueltig oder rueckwaerts:", target, "in", stepKey[i]); return; }
         lab.setAttribute("data-go-to", target);
         if (ti !== i + 1) lab.setAttribute("data-skip-to", String(ti + 1));
         edges[i][ti] = 1;
+        if (ti === i + 1) plain++;
       });
+      if (radios && !plain) delete edges[i][i + 1];
       /* Mehrfachauswahl: Kaestchen-Antworten tragen kein eigenes Ziel, es gilt das Ziel der Karte */
     });
     /* Im Logikmodus schaltet Formly die Browser-Pflichtfeldpruefung ab. Deshalb hier selbst pruefen:
@@ -313,10 +320,16 @@
     document.addEventListener("keydown", guard, true);
     /* Bewerber, die vorher eine andere Richtung gewaehlt hatten: Antworten nicht besuchter Schritte beim Absenden leeren */
   }
-  function remaining(i) { /* kuerzeste Restlaenge bis zum Kontaktschritt (Breitensuche ueber die Sprungkanten) */
-    var goal = keyIndex.kontakt != null ? keyIndex.kontakt : flowSteps.length - 2, dist = {}, queue = [i]; dist[i] = 0;
-    while (queue.length) { var c = queue.shift(); if (c >= goal) return dist[c]; Object.keys(edges[c] || {}).forEach(function (n) { n = +n; if (dist[n] == null) { dist[n] = dist[c] + 1; queue.push(n); } }); }
-    return Math.max(0, goal - i);
+  /* 14.4: laengste Restlaenge (Fragen inkl. Schritt i) bis zum Kontaktschritt. Spruenge gehen nur nach vorne, der Graph ist kreisfrei.
+     Die angezeigte Gesamtzahl kann dadurch nur gleich bleiben oder kleiner werden, nie wachsen. */
+  var longMemo = {};
+  function longest(i) {
+    var goal = keyIndex.kontakt != null ? keyIndex.kontakt : flowSteps.length - 2;
+    if (i >= goal) return 0;
+    if (longMemo[i] != null) return longMemo[i];
+    var nx = Object.keys(edges[i] || {}).map(Number).filter(function (n) { return n > i; }), best = 0;
+    nx.forEach(function (n) { best = Math.max(best, longest(n)); });
+    return (longMemo[i] = nx.length ? 1 + best : goal - i);
   }
   var visited = [];
 
@@ -347,10 +360,11 @@
       var goal = keyIndex.kontakt != null ? keyIndex.kontakt : total;
       var onC = idx >= goal;
       if (onC && !contactSeen) { contactSeen = true; dl({ event: "gj_contact_view" }); }
-      /* Gesamtzahl haengt vom Pfad ab, deshalb nur "Frage k" (eine wechselnde Gesamtzahl wirkt wie ein Fehler). Balken = geschaetzter Rest. */
-      var k = visited.filter(function (v) { return v < goal; }).length, n = onC ? k : (k - 1 + remaining(idx) + 1);
-      if (counterEl) counterEl.textContent = !onC ? ("Frage " + k) : (idx === goal ? "Fast geschafft" : "Letzter Schritt");
-      if (fill) fill.style.width = Math.max(6, Math.round((onC ? (k + 1 + (idx - goal)) / (k + 3) : k / (n + 3)) * 100)) + "%";
+      /* 14.4: "Frage k von n", n = bisher beantwortete plus laengster moeglicher Rest. n waechst nie, ueberspringt eine Antwort
+         Fragen, wird n kleiner (Wunsch Timur 20.10.2026, aktiv-plus). Balken = k von n plus zwei Kontaktschritte. */
+      var k = visited.filter(function (v) { return v < goal; }).length, n = onC ? k : (k - 1 + longest(idx));
+      if (counterEl) counterEl.textContent = !onC ? ("Frage " + k + " von " + n) : (idx === goal ? "Fast geschafft" : "Letzter Schritt");
+      if (fill) fill.style.width = Math.max(6, Math.round((onC ? (k + 1 + (idx - goal)) / (k + 3) : k / (n + 2)) * 100)) + "%";
       return;
     }
     var onContact = idx >= total;
