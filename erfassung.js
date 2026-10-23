@@ -1,4 +1,6 @@
-/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.1 (2026-10-23)
+/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.2 (2026-10-23)
+   1.0.2: startet erst bei DOMContentLoaded, damit die Reihenfolge der Skripte im Footer egal ist (Webflow hängt
+          registrierte Skripte ohne defer an; funnel.js und Formly sind bis DOMContentLoaded immer gelaufen).
    1.0.1: KA-Nummer auch aus #gj-ka (Feld-Bindung im Footer der Vorlage); Schritte zählen erst, wenn sie wirklich
           auf dem Bildschirm sind (Großer Funnel: Einstiegsseiten verdecken die Fragen, ohne sie selbst auszublenden).
    Beobachtet die von funnel.js vorbereitete Bewerbungsseite und meldet jeden Klickweg sofort an die eigene
@@ -11,11 +13,12 @@
    - sendet keine Namen, Telefon, E-Mail, Freitexte (nur „beantwortet“) und keine Browserkennung.
    - Sitzungs-Kennung lebt nur im Arbeitsspeicher, neu bei jedem Seitenaufruf.
    - Senden wartet nie auf eine Antwort; scheitert es, ist die Sendung verloren. Fehler bleiben folgenlos.
-   Laden: im Footer der Vorlage NACH funnel.js und Formly, mit defer. */
+   Laden: als registriertes Skript an der Vorlage (Webflow "FunnelErfassung"); Position im Footer egal, siehe 1.0.2. */
 (function () {
   "use strict";
+  function start() {
   try {
-    var VERSION = "1.0.1";
+    var VERSION = "1.0.2";
     var LIVE = "bewerbung.glanzjobs.de", TESTADRESSE = "timurs-cool-site-da5d3f.webflow.io";
     var host = location.hostname, lokal = host === "127.0.0.1" || host === "localhost";
     if (host !== LIVE && host !== TESTADRESSE && !lokal) return;
@@ -191,4 +194,6 @@
     });
     window.addEventListener("pagehide", function () { try { senden(true); } catch (x) {} });
   } catch (fehler) { /* Erfassung darf den Funnel nie stören (AC-18) */ }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
