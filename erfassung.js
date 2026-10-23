@@ -1,4 +1,6 @@
-/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.0 (2026-10-23)
+/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.1 (2026-10-23)
+   1.0.1: KA-Nummer auch aus #gj-ka (Feld-Bindung im Footer der Vorlage); Schritte zählen erst, wenn sie wirklich
+          auf dem Bildschirm sind (Großer Funnel: Einstiegsseiten verdecken die Fragen, ohne sie selbst auszublenden).
    Beobachtet die von funnel.js vorbereitete Bewerbungsseite und meldet jeden Klickweg sofort an die eigene
    Annahmestelle https://erfassung.glanzjobs.de (von dort weiter an Tinybird, Frankfurt):
    Besuch, Definition der Fragen (mit Prüfsumme), Schritt sichtbar, Antwort (beim Weitergehen), Herkunft
@@ -13,7 +15,7 @@
 (function () {
   "use strict";
   try {
-    var VERSION = "1.0.0";
+    var VERSION = "1.0.1";
     var LIVE = "bewerbung.glanzjobs.de", TESTADRESSE = "timurs-cool-site-da5d3f.webflow.io";
     var host = location.hostname, lokal = host === "127.0.0.1" || host === "localhost";
     if (host !== LIVE && host !== TESTADRESSE && !lokal) return;
@@ -23,7 +25,8 @@
     /* ---------- Kopfdaten, beim Laden festgehalten (EC-7, EC-8) ---------- */
     var cfgEl = document.getElementById("gj-config");
     function cfg(name) { var e = cfgEl && cfgEl.querySelector('[data-k="' + name + '"]'); return e ? (e.textContent || "").trim() : ""; }
-    var KA = cfg("ka").slice(0, 20);
+    var kaEl = document.getElementById("gj-ka");   /* Feld-Bindung im Footer der Vorlage */
+    var KA = (cfg("ka") || (kaEl ? (kaEl.textContent || "").trim() : "")).slice(0, 20);
     var SLUG = (cfg("slug") || location.pathname.split("/").pop() || "").toLowerCase();
     function param(n) { try { return new URLSearchParams(location.search).get(n) || ""; } catch (e) { return ""; } }
     function gemerkt(n) { try { return sessionStorage.getItem("gj_p_" + n) || ""; } catch (e) { return ""; } }   /* nur lesen: setzt funnel.js */
@@ -129,8 +132,10 @@
     }
 
     /* ---------- Schrittwechsel (AC-7): erster sichtbarer Schritt wie in funnel.js ---------- */
+    /* Erster Schritt, der wirklich auf dem Bildschirm ist: selbst nicht ausgeblendet UND kein Vorfahr ausgeblendet
+       (beim Großen Funnel verdecken die Einstiegsseiten die Fragenkarte, die Schritte selbst bleiben "block"). */
     function sichtbar() {
-      for (var i = 0; i < schritte.length; i++) if (getComputedStyle(schritte[i]).display !== "none") return i;
+      for (var i = 0; i < schritte.length; i++) if (getComputedStyle(schritte[i]).display !== "none" && schritte[i].getClientRects().length > 0) return i;
       return -1;
     }
     function wechsel() {
@@ -147,10 +152,11 @@
     /* ---------- Start (AC-4, AC-5) ---------- */
     melde("besuch");
     melde("definition", { definition: DEFINITION });
-    aktuell = Math.max(0, sichtbar()); zeitStarten();
-    melde("schritt", { schritt: schrittId(aktuell), pos: aktuell + 1 });
+    wechsel();   /* erster sichtbarer Schritt; beim Großen Funnel erst, wenn die Fragen erscheinen */
     var beobachter = new MutationObserver(wechsel);
     schritte.forEach(function (s) { beobachter.observe(s, { attributes: true, attributeFilter: ["style", "class"] }); });
+    var seite = document.querySelector('[data-gj="page"]');
+    if (seite) beobachter.observe(seite, { attributes: true });   /* Großer Funnel: Wechsel Einstiegsseiten -> Fragen */
 
     /* ---------- Direkte Absage (AC-11): vor dem Seitenwechsel raus ---------- */
     document.addEventListener("click", function (ev) {
