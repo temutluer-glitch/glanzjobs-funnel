@@ -12,7 +12,9 @@ fuer den Google Tag Manager, Verlassen-Warnung. Enthaelt keine Geheimnisse. Doku
 - `funnel.js`: Laufzeit-Logik (Schritte, Zaehler, Attribution, Events). Laedt im Seitenfuss der Stellen-Vorlage VOR Formly.
 - `funnel.css`: Design (Version 6, Muster cf-jobs). Laedt im `<head>` der Stellen-Vorlage und der Absage-Seite. Alle Selektoren haengen an `data-gj`-Attributen, die Webflow-Klassen bleiben unberuehrt. Kundenfarbe kommt als `--gj` aus funnel.js.
 
-Beide Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). Neue Version = committen, pushen, Hash im Webflow-Custom-Code eintragen, Seite veroeffentlichen.
+- `erfassung.js` (seit 2026-10-23, Funnel-Erfassung PROJ-30): meldet Besuch, Fragen-Definition, Schritte, Antworten, Herkunft, Absage, Bewerbung und Zeit je Schritt sofort an die eigene Annahmestelle `https://erfassung.glanzjobs.de` (von dort an Tinybird, Frankfurt). Liest nur, was funnel.js vorbereitet hat; schreibt keine Cookies, keinen Speicher, nichts in den dataLayer, keine Formularfelder; sendet keine Namen, Kontaktdaten, Freitexte oder Browserkennung. Laedt im Seitenfuss NACH funnel.js und Formly, mit `defer`. Aktiv nur auf bewerbung.glanzjobs.de und der Webflow-Testadresse. Test-Kennzeichen: `?gj_test=1`. Annahmestelle und Probe liegen im privaten Repo temutluer-glitch/funnel-erfassung.
+
+Alle Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). Neue Version = committen, pushen, Hash im Webflow-Custom-Code eintragen, Seite veroeffentlichen.
 
 ## Paket an LeadTable (lead_json, seit Version 10, erweitert in Version 11)
 
