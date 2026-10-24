@@ -1,4 +1,6 @@
-/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.2 (2026-10-23)
+/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.3 (2026-10-23)
+   1.0.3: Großer Funnel (AC-30, AC-31): Einstiegsseiten als Schritte _intro_start/_intro_benefits/_intro_aufgaben vor den
+          Fragen, Antwort auf „Kommst Du aus …?“, Block „einstieg“ in der Definition. Ohne Großen Funnel unverändert.
    1.0.2: startet erst bei DOMContentLoaded, damit die Reihenfolge der Skripte im Footer egal ist (Webflow hängt
           registrierte Skripte ohne defer an; funnel.js und Formly sind bis DOMContentLoaded immer gelaufen).
    1.0.1: KA-Nummer auch aus #gj-ka (Feld-Bindung im Footer der Vorlage); Schritte zählen erst, wenn sie wirklich
@@ -18,7 +20,7 @@
   "use strict";
   function start() {
   try {
-    var VERSION = "1.0.2";
+    var VERSION = "1.0.3";
     var LIVE = "bewerbung.glanzjobs.de", TESTADRESSE = "timurs-cool-site-da5d3f.webflow.io";
     var host = location.hostname, lokal = host === "127.0.0.1" || host === "localhost";
     if (host !== LIVE && host !== TESTADRESSE && !lokal) return;
@@ -55,8 +57,14 @@
     /* ---------- Schritte und Definition (AC-5, AC-6) ---------- */
     var schritte = Array.prototype.slice.call(document.querySelectorAll('[data-form="step"]'));
     if (!schritte.length) return;
+    /* Großer Funnel (AC-30): Einstiegsseiten vor den Fragen. Ansicht i: 0 .. N_INTRO-1 = Einstiegsseiten, danach die Schritte. */
+    var seite = document.querySelector('[data-gj="page"]');
+    var intro = document.querySelector('[data-gj="intro"]');
+    var introSeiten = intro ? Array.prototype.slice.call(intro.querySelectorAll('[data-gj-i="seite"]')) : [];
+    var N_INTRO = introSeiten.length;
     function schrittId(i) {
-      var s = schritte[i]; if (!s) return "";
+      if (i < N_INTRO) return "_intro_" + (introSeiten[i].getAttribute("data-seite") || String(i + 1));
+      var s = schritte[i - N_INTRO]; if (!s) return "";
       var q = s.getAttribute("data-question-id"); if (q) return q;
       var gj = s.getAttribute("data-gj");
       if (gj === "ort-step") return "_ort";
@@ -77,9 +85,14 @@
       Array.prototype.forEach.call(s.querySelectorAll('a[href*="/absage"]'), function (a) {
         antworten.push({ text: text(a.querySelector('[data-gj="ko-text"]') || a), absage: true, sprung: "" });
       });
-      fragen.push({ id: schrittId(i), pos: i + 1, text: text(s.querySelector('[data-gj="q"]')), art: art, antworten: antworten });
+      fragen.push({ id: schrittId(N_INTRO + i), pos: N_INTRO + i + 1, text: text(s.querySelector('[data-gj="q"]')), art: art, antworten: antworten });
     });
-    var DEFINITION = JSON.stringify({ v: 1, fragen: fragen, feste: ["_ort", "_name", "_kontakt"] });
+    var def = { v: 1, fragen: fragen, feste: ["_ort", "_name", "_kontakt"] };   /* ohne Großen Funnel genau wie 1.0.2 (EC-15) */
+    if (N_INTRO) def = { v: 1, einstieg: { seiten: introSeiten.map(function (x, k) { return schrittId(k); }),
+                         frage: { id: "_intro_start", text: text(intro.querySelector('[data-gj-i="frage"]')),
+                                  antworten: [{ text: "Ja", absage: false, sprung: "" }, { text: "Nein", absage: false, sprung: "" }] } },
+                         fragen: fragen, feste: ["_ort", "_name", "_kontakt"] };
+    var DEFINITION = JSON.stringify(def);
     function pruefsumme(str) {   /* zwei 32-Bit-FNV-1a-Läufe mit verschiedenen Startwerten = 16 Hex-Zeichen */
       var a = 0x811c9dc5, b = 0x5bd1e995;
       for (var i = 0; i < str.length; i++) { var c = str.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = Math.imul(b ^ c, 2246822519); }
@@ -121,7 +134,12 @@
 
     /* ---------- Antwortstand eines verlassenen Schritts (AC-8, AC-9, EC-4) ---------- */
     function meldeAntwort(i) {
-      var s = schritte[i], id = schrittId(i);
+      if (i < N_INTRO) {   /* AC-31: Antwort auf „Kommst Du aus …?“ liest das Einstiegs-Skript in window.__gjIntro (nur lesen) */
+        var o = window.__gjIntro && window.__gjIntro.standort_einstieg;
+        if (schrittId(i) === "_intro_start" && o) melde("antwort", { schritt: "_intro_start", pos: i + 1, antworten: [String(o).slice(0, 300)] });
+        return;
+      }
+      var s = schritte[i - N_INTRO], id = schrittId(i);
       if (s.hasAttribute("data-question-id")) {
         var ta = s.querySelector("textarea");
         if (ta) { if ((ta.value || "").trim()) melde("antwort", { schritt: id, pos: i + 1, freitext: true }); return; }
@@ -138,7 +156,11 @@
     /* Erster Schritt, der wirklich auf dem Bildschirm ist: selbst nicht ausgeblendet UND kein Vorfahr ausgeblendet
        (beim Großen Funnel verdecken die Einstiegsseiten die Fragenkarte, die Schritte selbst bleiben "block"). */
     function sichtbar() {
-      for (var i = 0; i < schritte.length; i++) if (getComputedStyle(schritte[i]).display !== "none" && schritte[i].getClientRects().length > 0) return i;
+      if (N_INTRO && seite && seite.hasAttribute("data-gj-intro")) {   /* Einstiegsseiten zu sehen */
+        for (var k = 0; k < N_INTRO; k++) if (!introSeiten[k].hidden) return k;
+        return -1;
+      }
+      for (var i = 0; i < schritte.length; i++) if (getComputedStyle(schritte[i]).display !== "none" && schritte[i].getClientRects().length > 0) return N_INTRO + i;
       return -1;
     }
     function wechsel() {
@@ -158,14 +180,15 @@
     wechsel();   /* erster sichtbarer Schritt; beim Großen Funnel erst, wenn die Fragen erscheinen */
     var beobachter = new MutationObserver(wechsel);
     schritte.forEach(function (s) { beobachter.observe(s, { attributes: true, attributeFilter: ["style", "class"] }); });
-    var seite = document.querySelector('[data-gj="page"]');
     if (seite) beobachter.observe(seite, { attributes: true });   /* Großer Funnel: Wechsel Einstiegsseiten -> Fragen */
+    if (intro) beobachter.observe(intro, { attributes: true, subtree: true, attributeFilter: ["hidden"] });   /* Wechsel zwischen Einstiegsseiten */
 
     /* ---------- Direkte Absage (AC-11): vor dem Seitenwechsel raus ---------- */
     document.addEventListener("click", function (ev) {
       try {
         var a = ev.target && ev.target.closest && ev.target.closest('a[href*="/absage"]'); if (!a || fertig) return;
-        var i = schritte.indexOf(a.closest('[data-form="step"]')); if (i < 0) return;
+        var j = schritte.indexOf(a.closest('[data-form="step"]')); if (j < 0) return;
+        var i = N_INTRO + j;
         var knopf = text(a.querySelector('[data-gj="ko-text"]') || a);
         meldeZeit(i);
         melde("absage", { schritt: schrittId(i), pos: i + 1, antworten: knopf ? [knopf] : [] });
