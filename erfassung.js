@@ -1,4 +1,7 @@
-/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.3 (2026-10-23)
+/* erfassung.js – Funnel-Erfassung (PROJ-30), Version 1.0.4 (2026-10-26)
+   1.0.4: Nach einer Absage geht derselbe Besuch weiter (EC-16): Zurück-Knopf aus dem Zwischenspeicher des Browsers
+          (pageshow persisted) oder Absage in neuem Tab (mittlere Maustaste, Strg-/Cmd-/Umschalt-/Alt-Klick). Vorher
+          blieb die Erfassung nach jeder Absage stumm. Die mittlere Maustaste meldet jetzt auch eine Absage.
    1.0.3: Großer Funnel (AC-30, AC-31): Einstiegsseiten als Schritte _intro_start/_intro_benefits/_intro_aufgaben vor den
           Fragen, Antwort auf „Kommst Du aus …?“, Block „einstieg“ in der Definition. Ohne Großen Funnel unverändert.
    1.0.2: startet erst bei DOMContentLoaded, damit die Reihenfolge der Skripte im Footer egal ist (Webflow hängt
@@ -20,7 +23,7 @@
   "use strict";
   function start() {
   try {
-    var VERSION = "1.0.3";
+    var VERSION = "1.0.4";
     var LIVE = "bewerbung.glanzjobs.de", TESTADRESSE = "timurs-cool-site-da5d3f.webflow.io";
     var host = location.hostname, lokal = host === "127.0.0.1" || host === "localhost";
     if (host !== LIVE && host !== TESTADRESSE && !lokal) return;
@@ -123,7 +126,8 @@
     }
 
     /* ---------- Aktive Zeit je Schritt (AC-13): zählt nur, solange die Seite sichtbar ist ---------- */
-    var aktuell = -1, sekunden = {}, seit = null, fertig = false;
+    /* fertig: Bewerbung abgeschickt, danach kommt nichts mehr. verlaesst: Absage im selben Tab, die Seite geht gleich weg. */
+    var aktuell = -1, sekunden = {}, seit = null, fertig = false, verlaesst = false;
     function zeitStoppen() { if (seit !== null && aktuell >= 0) sekunden[aktuell] = (sekunden[aktuell] || 0) + (performance.now() - seit) / 1000; seit = null; }
     function zeitStarten() { if (document.visibilityState === "visible" && seit === null) seit = performance.now(); }
     function meldeZeit(i) {
@@ -168,6 +172,7 @@
         if (fertig) return;
         var i = sichtbar(); if (i < 0 || i === aktuell) return;
         var alt = aktuell;
+        verlaesst = false;   /* die Seite ist noch da */
         if (alt >= 0) { meldeZeit(alt); if (i > alt) meldeAntwort(alt); }   /* rückwärts: nichts melden (EC-4) */
         aktuell = i; zeitStarten();
         melde("schritt", { schritt: schrittId(i), pos: i + 1 });
@@ -183,18 +188,26 @@
     if (seite) beobachter.observe(seite, { attributes: true });   /* Großer Funnel: Wechsel Einstiegsseiten -> Fragen */
     if (intro) beobachter.observe(intro, { attributes: true, subtree: true, attributeFilter: ["hidden"] });   /* Wechsel zwischen Einstiegsseiten */
 
-    /* ---------- Direkte Absage (AC-11): vor dem Seitenwechsel raus ---------- */
-    document.addEventListener("click", function (ev) {
+    /* ---------- Direkte Absage (AC-11): vor dem Seitenwechsel raus; danach geht derselbe Besuch weiter (EC-16) ---------- */
+    function absage(ev) {
       try {
+        if (ev.type === "auxclick" && ev.button !== 1) return;   /* nur mittlere Maustaste (öffnet einen neuen Tab) */
         var a = ev.target && ev.target.closest && ev.target.closest('a[href*="/absage"]'); if (!a || fertig) return;
         var j = schritte.indexOf(a.closest('[data-form="step"]')); if (j < 0) return;
         var i = N_INTRO + j;
         var knopf = text(a.querySelector('[data-gj="ko-text"]') || a);
         meldeZeit(i);
         melde("absage", { schritt: schrittId(i), pos: i + 1, antworten: knopf ? [knopf] : [] });
-        fertig = true; senden(true);
+        var neuerTab = ev.type === "auxclick" || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || (a.target && a.target !== "_self");
+        if (neuerTab) zeitStarten(); else verlaesst = true;   /* neuer Tab: diese Seite bleibt, die Zeit läuft weiter */
+        senden(true);
       } catch (x) {}
-    }, true);
+    }
+    document.addEventListener("click", absage, true);
+    document.addEventListener("auxclick", absage, true);
+    /* Zurück-Knopf: Die Seite kommt aus dem Zwischenspeicher des Browsers zurück, Sitzung und Nummer laufen weiter (EC-16).
+       Lädt der Browser sie dagegen neu, startet erfassung.js von vorn (neuer Besuch, EC-5). */
+    window.addEventListener("pageshow", function (ev) { try { if (ev.persisted) { verlaesst = false; zeitStarten(); } } catch (x) {} });
 
     /* ---------- Bewerbung (AC-12): Erfolgsmeldung sichtbar ---------- */
     var erfolg = document.getElementById("bewerbung-erfolgreich");
@@ -211,8 +224,8 @@
     /* ---------- Verbergen und Verlassen (EC-2): Zeitstand und Rest sofort senden ---------- */
     document.addEventListener("visibilitychange", function () {
       try {
-        if (document.visibilityState === "hidden") { if (!fertig) meldeZeit(aktuell); senden(true); }
-        else zeitStarten();
+        if (document.visibilityState === "hidden") { if (!fertig && !verlaesst) meldeZeit(aktuell); senden(true); }
+        else { verlaesst = false; zeitStarten(); }
       } catch (x) {}
     });
     window.addEventListener("pagehide", function () { try { senden(true); } catch (x) {} });
