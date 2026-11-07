@@ -1,6 +1,9 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 15.1 (2026-11-07): KA-Nummer der Kampagne als verstecktes Formularfeld "ka" (wie erfassung.js aus #gj-config data-k="ka",
+   sonst #gj-ka), damit das Partnerportal die Bewerbung der Kampagne zuordnet (Agency Hub PROJ-33). "ka" gehoert nicht in lead_json
+   (LEAD_SKIP), das Paket an LeadTable bleibt unveraendert. Sonst alles wie Version 15.
    Version 15 (2026-11-07): Qualitaetsfilter. Neues CMS-Feld top-kriterien (in #gj-config als data-k="top"), Muster je Kriterium
    "frage-id: Antwort | Antwort", getrennt durch Zeilenumbruch oder Semikolon. Ist es gefuellt, geht gj_lead (Meta "Lead") nur noch an Meta,
    wenn alle gueltigen Kriterien erfuellt sind; gj_submit_application (Meta "SubmitApplication") immer. meta_cd bekommt top_bewerber ja/nein.
@@ -45,6 +48,8 @@
   var C = { firma: k("firma"), slug: k("slug") || location.pathname.split("/").pop(), stelle: k("stelle"), ort: k("ort"),
             farbe: k("farbe"), ap: k("ap"), ziel: k("webhook"), pixel: k("pixel").replace(/\D/g, ""), ds: k("ds"), imp: k("imp"),
             benefits: k("benefits"), zeitmodell: k("zeitmodell"), start: k("start"), logo: img("logo"), hero: img("hero"), apbild: img("apbild") };
+  /* 15.1: KA-Nummer wie erfassung.js (Konfiguration, sonst Feld-Bindung #gj-ka im Footer der Vorlage), hoechstens 20 Zeichen. */
+  C.ka = (k("ka") || ((document.getElementById("gj-ka") || {}).textContent || "").trim()).slice(0, 20);
   window.__gjConfig = C;
   var page = document.querySelector('[data-gj="page"]');
   /* 14: Formly liest data-scroll-top beim Start; ohne Attribut keine 1-Sekunden-jQuery-Animation pro Schritt. */
@@ -435,7 +440,7 @@
   var V = { fbp: fbp, fbc: fbc || "", fbclid: fbclid, external_id: eid, user_agent: (navigator.userAgent || "").slice(0, 300),
             event_source_url: location.origin + location.pathname, landing_url: (ss("gj_landing") || ss("gj_landing", location.href) || "").slice(0, 250),
             page_referrer: (document.referrer || "").slice(0, 250), stelle: C.slug, kunde: C.firma, stellenbezeichnung: C.stelle, ort: C.ort,
-            pixel_id: C.pixel, ziel_webhook: C.ziel };
+            pixel_id: C.pixel, ziel_webhook: C.ziel, ka: C.ka };
   ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_id", "campaign_name", "adset_name", "ad_name", "placement", "site_source_name", "gclid", "ttclid", "msclkid"]
     .forEach(function (key) { var v = getParam(key); if (v) ss("gj_p_" + key, v); var w = v || ss("gj_p_" + key); if (w) V[key] = String(w).slice(0, 250); });
   var start = ss("gj_start") || ss("gj_start", String(Date.now()));
@@ -463,7 +468,7 @@
     });
     return out;
   }
-  var LEAD_SKIP = { stelle: 1, kunde: 1, stellenbezeichnung: 1, ort: 1, pixel_id: 1, ziel_webhook: 1 };
+  var LEAD_SKIP = { stelle: 1, kunde: 1, stellenbezeichnung: 1, ort: 1, pixel_id: 1, ziel_webhook: 1, ka: 1 };
   function buildLead(tof) {
     var out = { vorname: ((fVor && fVor.value) || "").trim(), nachname: ((fNach && fNach.value) || "").trim(),
                 telefon: val("f-telefon"), email: val("f-email"), plz_ort: val("f-plz-ort") };

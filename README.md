@@ -20,6 +20,14 @@ Alle Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). Ne
 
 Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das versteckte Feld `lead_json`. Darin stehen: die Antworten des Bewerbers (Schluessel = Frage-ID aus der Fragenbank, Mehrfachauswahl als "A; B"), Kontaktdaten `vorname`, `nachname`, `telefon` (+49-Format), `email`, `plz_ort`, `datenschutz` (true/false) sowie die Werbe- und Technikfelder fuer die Zuordnung in LeadTable (utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id, campaign_name, adset_name, ad_name, placement, site_source_name, gclid, ttclid, msclkid, fbclid, fbp, fbc, external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel; nur wenn gefuellt). NICHT dabei: `name` (doppelt zu vorname/nachname), `stelle`, `kunde`, `stellenbezeichnung`, `ort` (Einsatzort der Stelle), `pixel_id`, `ziel_webhook`. Diese bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make-Szenario 7876191 sendet im HTTP-Modul `lead_json` unveraendert an den Ziel-Webhook der Stelle (Fallback auf das volle Formular nur, wenn lead_json fehlt).
 
+## Version 15.1 (2026-11-07): KA-Nummer im Formular
+
+- funnel.js liest die KA-Nummer der Kampagne wie erfassung.js (`#gj-config [data-k="ka"]`, sonst die Feld-Bindung `#gj-ka` im Footer der Vorlage), hoechstens 20 Zeichen, und schreibt sie als verstecktes Formularfeld `ka`. Ohne KA-Nummer entsteht kein Feld.
+- Zweck: Das Partnerportal (Agency Hub, PROJ-33) bekommt jede Bewerbung zusaetzlich ueber einen eigenen Webflow-Webhook und ordnet sie ueber `ka` der Kampagne zu.
+- `ka` steht in `LEAD_SKIP`: lead_json und damit das Paket an LeadTable bleiben unveraendert (keine neue Spalte in LeadTable).
+- Sonst alles wie Version 15.
+- Lokal geprueft in einem nachgebauten Browser (jsdom, ohne Tag Manager, ohne erfassung.js, ohne Pixel und Webhook): Feld `ka` aus `data-k="ka"` und aus `#gj-ka`, kein Feld ohne KA-Nummer, `ka` nicht in lead_json. Gegenprobe: Version 15 schreibt kein Feld, ohne `LEAD_SKIP`-Eintrag stuende `ka` in lead_json.
+
 ## Version 15 (2026-11-07): Qualitaetsfilter ("Lead" nur fuer Top-Bewerber)
 
 - Neues CMS-Feld `top-kriterien` der Stelle, in der Vorlage als `#gj-config [data-k="top"]`. Muster je Kriterium `frage-id: Antwort | Antwort`, Kriterien durch Zeilenumbruch oder Semikolon getrennt. Antworten im Wortlaut wie im Funnel; Gross- und Kleinschreibung, Satzzeichen und Platzhalter ([Beruf] usw.) spielen keine Rolle.
