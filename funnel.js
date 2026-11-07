@@ -1,6 +1,11 @@
 /* GlanzJobs Bewerbungsfunnel: Laufzeit-Logik der Webflow-Vorlage "Stellen Template".
    Laedt VOR Formly (multi-step.js). Liest alles aus dem versteckten #gj-config (CMS-gebunden).
    Keine IP-Abfrage im Browser (Datenschutz). Praefix gj_.
+   Version 15 (2026-11-07): Qualitaetsfilter. Neues CMS-Feld top-kriterien (in #gj-config als data-k="top"), Muster je Kriterium
+   "frage-id: Antwort | Antwort", getrennt durch Zeilenumbruch oder Semikolon. Ist es gefuellt, geht gj_lead (Meta "Lead") nur noch an Meta,
+   wenn alle gueltigen Kriterien erfuellt sind; gj_submit_application (Meta "SubmitApplication") immer. meta_cd bekommt top_bewerber ja/nein.
+   Feld leer, Kriterium ungueltig (Frage oder Antwort gibt es auf der Seite nicht) oder ein Fehler: alles wie bisher, Lead bei jeder Bewerbung.
+   Formular, lead_json, Absage und Tag Manager unveraendert. window.__gjTopCheck() zeigt die Pruefung fuer den aktuellen Stand (Tests).
    Version 14.4 (2026-10-20): Zaehler bei Verzweigung "Frage k von n", n = beantwortete plus laengster moeglicher Rest. n waechst nie,
    ueberspringt eine Antwort Fragen, wird n kleiner (Wunsch Timur, aktiv-plus Arnsberg, auch ALBO). Springen alle Einfach-Antworten einer
    Frage, zaehlt der direkt folgende Schritt nicht als moeglicher Weg. Formular, Antworten und lead_json unveraendert.
@@ -54,6 +59,27 @@
   var beruf = C.stelle.replace(/\s*\((m\/w\/d|w\/m\/d|m\/w\/x|d\/m\/w|m\/f\/d)\)/i, "").trim();
   function fill(t) { return String(t || "").replace(/\[Stelle\]/g, C.stelle).replace(/\[Beruf\]/g, beruf).replace(/\[Ort\]/g, C.ort); }
   function fillEl(el) { if (el && el.textContent && /\[(Stelle|Beruf|Ort)\]/.test(el.textContent)) el.textContent = fill(el.textContent); }
+  /* 15: Qualitaetsfilter. CMS-Feld top-kriterien, in #gj-config als data-k="top". Je Kriterium "frage-id: Antwort | Antwort",
+     Kriterien durch Zeilenumbruch oder Semikolon getrennt. Feld leer = alles wie bisher ("Lead" bei jeder Bewerbung). */
+  var fillPh = fill; /* "fill" wird weiter unten fuer den Fortschrittsbalken neu belegt; die Platzhalter-Funktion hier sichern */
+  function topRaw() {
+    var e = cfgEl && cfgEl.querySelector('[data-k="top"]'); if (!e) return "";
+    var t = document.createElement("textarea"); t.innerHTML = e.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, ""); return t.value.trim();
+  }
+  function normA(s) {
+    var x = fillPh(String(s == null ? "" : s)).replace(/\[>[^\]]*\]/g, "").toLowerCase();
+    try { x = x.replace(new RegExp("[^\\p{L}\\p{N}]+", "gu"), " "); } catch (e) { x = x.replace(/[^a-z0-9äöüß]+/g, " "); }
+    return x.trim();
+  }
+  var TOP = (function () {
+    var raw = topRaw(), list = []; if (!raw) return null;
+    raw.split(/\n|;/).forEach(function (line) {
+      var i = line.indexOf(":"); if (i < 1) return;
+      var id = line.slice(0, i).trim(), opts = line.slice(i + 1).split("|").map(normA).filter(Boolean);
+      if (id && opts.length) list.push({ id: id, opts: opts, text: line.trim() });
+    });
+    return list.length ? list : null;
+  })();
 
   /* ---------- Kundenfarbe (alles Weitere steht in funnel.css) ---------- */
   var color = /^#?[0-9a-f]{6}$/i.test(C.farbe) ? (C.farbe[0] === "#" ? C.farbe : "#" + C.farbe) : "#335e7b";
@@ -483,6 +509,25 @@
   /* ---------- Erfolgsmeldung: Darstellung umschalten, Lead-Events (Lead + SubmitApplication, mit user_data fuer den Abgleich) ---------- */
   function val(id) { var el = document.getElementById(id); return el && el.value ? String(el.value).trim() : ""; }
   function normPhone(p) { return toE164(p).replace(/\D/g, ""); }
+  /* 15: Prueft die Top-Kriterien gegen die Antworten. Ein Kriterium zaehlt nur, wenn seine Frage auf der Seite steht und mindestens eine
+     seiner Antworten dort wirklich angeboten wird (Freitext-Fragen: Vergleich mit dem Text). Ungueltige Kriterien werden ignoriert und in der
+     Konsole gemeldet, damit ein Tippfehler nie alle Leads abschaltet. Mehrfachauswahl: eine der genannten Antworten reicht. */
+  function topCheck(ans) {
+    if (!TOP) return { aktiv: false, ok: true, fehlt: [], ignoriert: [] };
+    var gueltig = 0, fehlt = [], ignoriert = [];
+    TOP.forEach(function (c) {
+      var step = null; Array.prototype.forEach.call(document.querySelectorAll('[data-gj="step"][data-question-id]'), function (s) { if (s.getAttribute("data-question-id") === c.id) step = s; });
+      if (!step) { ignoriert.push(c.text); return; }
+      var moegl = Array.prototype.map.call(step.querySelectorAll('input[type="radio"], input[type="checkbox"]'), function (i) { return normA(i.value); });
+      if (moegl.length && !c.opts.some(function (o) { return moegl.indexOf(o) >= 0; })) { ignoriert.push(c.text); return; }
+      gueltig++;
+      var given = String(ans[c.id] || "").split(";").map(normA).filter(Boolean);
+      if (!given.some(function (g) { return c.opts.indexOf(g) >= 0; })) fehlt.push(c.id);
+    });
+    if (ignoriert.length && window.console) console.warn("GlanzJobs: Top-Kriterien ignoriert (Frage oder Antwort nicht gefunden):", ignoriert);
+    return { aktiv: gueltig > 0, ok: fehlt.length === 0, fehlt: fehlt, ignoriert: ignoriert };
+  }
+  window.__gjTopCheck = function () { try { return topCheck(answers()); } catch (e) { return { fehler: String(e) }; } };
   var okEl = document.getElementById("bewerbung-erfolgreich"), leadSent = false;
   function checkLead() {
     if (leadSent || !okEl || getComputedStyle(okEl).display === "none") return; leadSent = true;
@@ -496,9 +541,12 @@
     ud.address = [{ first_name: ud.first_name || "", last_name: ud.last_name || "", city: city || "", postal_code: zip || "", country: "de" }];
     var tof = Math.round((Date.now() - Number(start)) / 1000);
     /* Alle Antworten als Zusatzfelder (custom_data) mitgeben, Schluessel = Frage-ID: erlaubt in Meta eigene Conversions wie "Lead mit fuehrerschein = Ja". */
-    var cd = {}; try { var ans = answers(); Object.keys(ans).forEach(function (key) { cd[key] = ans[key]; }); } catch (e) {}
+    var cd = {}, ans = {}; try { ans = answers(); Object.keys(ans).forEach(function (key) { cd[key] = ans[key]; }); } catch (e) {}
     cd.content_name = C.slug; cd.content_category = "Bewerbung"; cd.time_on_funnel = tof; var il = interestLevel(); if (il) cd.interest = il;
-    dl({ event: "gj_lead", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof, meta_cd: cd });
+    /* 15: "Lead" nur fuer Top-Bewerber, wenn die Stelle Top-Kriterien hat; "SubmitApplication" immer. Bei jedem Fehler gilt: Lead senden (wie bisher). */
+    var top = { aktiv: false, ok: true }; try { top = topCheck(ans); } catch (e) {}
+    window.__gjTop = top; if (top.aktiv) cd.top_bewerber = top.ok ? "ja" : "nein";
+    if (top.ok) dl({ event: "gj_lead", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof, meta_cd: cd });
     dl({ event: "gj_submit_application", user_data: ud, stelle: C.slug, kunde: C.firma, time_on_funnel: tof, meta_cd: cd });
   }
   if (okEl) { new MutationObserver(checkLead).observe(okEl, { attributes: true, attributeFilter: ["style", "class"] }); setTimeout(checkLead, 0); }

@@ -20,6 +20,15 @@ Alle Dateien werden per jsDelivr auf einen Commit gepinnt (`@<commit-hash>`). Ne
 
 Beim Absenden schreibt funnel.js das fertige Zielpaket als JSON-Text in das versteckte Feld `lead_json`. Darin stehen: die Antworten des Bewerbers (Schluessel = Frage-ID aus der Fragenbank, Mehrfachauswahl als "A; B"), Kontaktdaten `vorname`, `nachname`, `telefon` (+49-Format), `email`, `plz_ort`, `datenschutz` (true/false) sowie die Werbe- und Technikfelder fuer die Zuordnung in LeadTable (utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id, campaign_name, adset_name, ad_name, placement, site_source_name, gclid, ttclid, msclkid, fbclid, fbp, fbc, external_id, user_agent, event_source_url, landing_url, page_referrer, time_on_funnel; nur wenn gefuellt). NICHT dabei: `name` (doppelt zu vorname/nachname), `stelle`, `kunde`, `stellenbezeichnung`, `ort` (Einsatzort der Stelle), `pixel_id`, `ziel_webhook`. Diese bleiben nur im Webflow-Formular fuer Make und Tag Manager. Make-Szenario 7876191 sendet im HTTP-Modul `lead_json` unveraendert an den Ziel-Webhook der Stelle (Fallback auf das volle Formular nur, wenn lead_json fehlt).
 
+## Version 15 (2026-11-07): Qualitaetsfilter ("Lead" nur fuer Top-Bewerber)
+
+- Neues CMS-Feld `top-kriterien` der Stelle, in der Vorlage als `#gj-config [data-k="top"]`. Muster je Kriterium `frage-id: Antwort | Antwort`, Kriterien durch Zeilenumbruch oder Semikolon getrennt. Antworten im Wortlaut wie im Funnel; Gross- und Kleinschreibung, Satzzeichen und Platzhalter ([Beruf] usw.) spielen keine Rolle.
+- Ist das Feld gefuellt, meldet funnel.js `gj_lead` (Meta "Lead") nur noch, wenn ALLE gueltigen Kriterien erfuellt sind. `gj_submit_application` (Meta "SubmitApplication") kommt immer. Mehrfachauswahl: eine der genannten Antworten reicht. Eine Frage, die bei Verzweigung nicht besucht wurde, gilt als nicht erfuellt.
+- Sicherungen: Feld leer, Kriterium ungueltig (Frage oder keine der Antworten auf der Seite) oder ein Fehler in der Pruefung: Lead wie bisher. Ungueltige Kriterien stehen als Warnung in der Konsole.
+- `meta_cd.top_bewerber` = "ja"/"nein" auf Lead und SubmitApplication (nur wenn Kriterien greifen). `window.__gjTop` (Ergebnis beim Absenden) und `window.__gjTopCheck()` (Pruefung fuer den aktuellen Stand) fuer Tests.
+- Unveraendert: Formular, lead_json, Absage, Tag Manager, Server-Tag, Make, LeadTable.
+- Lokal geprueft (ohne Tag Manager, ohne Absenden): Top-Bewerber, Standard-Bewerber, leeres Feld, ungueltige Kriterien, Verzweigung mit Mehrfachauswahl.
+
 ## Version 14.4 (2026-10-20): Zaehler mit Gesamtzahl bei Verzweigung
 
 - Wunsch Timur (aktiv-plus Arnsberg): statt "Frage 1" steht "Frage 1 von 13". n = bisher beantwortete Fragen plus laengster moeglicher Rest bis zum Kontaktschritt. Da Spruenge nur nach vorne gehen, waechst n nie; ueberspringt eine Antwort Fragen, wird n kleiner (Beispiel kurzer Weg aktiv-plus: 1 von 13, 2 von 13, 3 von 7 ... 6 von 7). Balken = k von n plus zwei Kontaktschritte.
